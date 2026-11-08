@@ -9,6 +9,7 @@ export enum CameraMode {
   CHASE = 'CHASE',
   ACTION = 'ACTION',
   DRIVER = 'DRIVER',
+  FRONT = 'FRONT',
 }
 
 export enum TimeOfDay {
@@ -64,6 +65,17 @@ export const DRIVER_PROFILES: Record<DriverId, DriverProfile> = {
   },
 };
 
+export type SignalColor = 'RED' | 'YELLOW' | 'GREEN';
+export type TrafficLightState = SignalColor | 'NONE';
+export type WeatherType = 'SUNNY' | 'MONSOON';
+
+export interface TrafficSignalHudInfo {
+  state: TrafficLightState;
+  secondsRemaining: number;
+  distanceToStopLine: number;
+  crossingNameBn: string;
+}
+
 export interface HudSnapshot {
   money: number;
   highScore: number;
@@ -78,6 +90,9 @@ export interface HudSnapshot {
   turboRemainingRatio: number;
   activeMobCount: number;
   trafficCount: number;
+  weather: WeatherType;
+  roadGrip: number;
+  trafficSignal?: TrafficSignalHudInfo;
 }
 
 export interface ScreenPopup {

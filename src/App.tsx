@@ -70,6 +70,7 @@ export function App() {
   }, []);
 
   const handleSelectDriver = useCallback((id: DriverId) => {
+    soundEngine.playSelectGxVoice();
     setSelectedDriver(id);
     engineRef.current?.setDriver(id, true);
   }, []);

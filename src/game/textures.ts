@@ -21,8 +21,12 @@ export interface ProceduralTexturePack {
   cngPlate: THREE.CanvasTexture;
   cngFrontBanner: THREE.CanvasTexture;
   cngMeter: THREE.CanvasTexture;
+  cngChevrons: THREE.CanvasTexture;
+  cngMudflap: THREE.CanvasTexture;
   kaderFace: THREE.Texture;
   lungis: THREE.CanvasTexture[];
+  zebraCrossing: THREE.CanvasTexture;
+  trafficSignDmp: THREE.CanvasTexture;
   disposeAll: () => void;
 }
 
@@ -701,6 +705,61 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   const cngMeter = finalizeColorTexture(meterCanvas, maxAnisotropy);
   allTextures.push(cngMeter);
 
+  // E. CNG Rear Bumper Yellow & Black Hazard Chevrons ("নিরাপদ দূরত্ব বজায় রাখুন")
+  const chevronCanvas = document.createElement('canvas');
+  chevronCanvas.width = 512;
+  chevronCanvas.height = 64;
+  const chvCtx = chevronCanvas.getContext('2d')!;
+  chvCtx.fillStyle = '#facc15';
+  chvCtx.fillRect(0, 0, 512, 64);
+  chvCtx.fillStyle = '#18181b';
+  // Alternating 45-degree angled safety stripes
+  const stripeW = 32;
+  for (let x = -64; x < 576; x += stripeW * 2) {
+    chvCtx.beginPath();
+    chvCtx.moveTo(x, 0);
+    chvCtx.lineTo(x + stripeW, 0);
+    chvCtx.lineTo(x + stripeW + 36, 64);
+    chvCtx.lineTo(x + 36, 64);
+    chvCtx.closePath();
+    chvCtx.fill();
+  }
+  const cngChevrons = finalizeColorTexture(chevronCanvas, maxAnisotropy, 2, 1);
+  allTextures.push(cngChevrons);
+
+  // F. Bangladeshi Rubber Mudflap ("মায়ের দোয়া ★ সাবধানে চালান")
+  const mudflapCanvas = document.createElement('canvas');
+  mudflapCanvas.width = 128;
+  mudflapCanvas.height = 128;
+  const mfCtx = mudflapCanvas.getContext('2d')!;
+  mfCtx.fillStyle = '#18181b';
+  mfCtx.fillRect(0, 0, 128, 128);
+  mfCtx.strokeStyle = '#3f3f46';
+  mfCtx.lineWidth = 4;
+  mfCtx.strokeRect(4, 4, 120, 120);
+
+  // Red & White decorative header
+  mfCtx.fillStyle = '#ef4444';
+  mfCtx.fillRect(8, 8, 112, 32);
+  mfCtx.fillStyle = '#ffffff';
+  mfCtx.font = 'bold 18px "Hind Siliguri", sans-serif';
+  mfCtx.textAlign = 'center';
+  mfCtx.fillText('মায়ের দোয়া', 64, 30);
+
+  // Bengali warning text
+  mfCtx.fillStyle = '#facc15';
+  mfCtx.font = 'bold 13px "Hind Siliguri", sans-serif';
+  mfCtx.fillText('দূরত্ব বজায়', 64, 68);
+  mfCtx.fillText('রাখুন', 64, 88);
+
+  // Star symbol
+  mfCtx.fillStyle = '#22c55e';
+  mfCtx.font = '16px sans-serif';
+  mfCtx.fillText('★ ★ ★', 64, 112);
+
+  const cngMudflap = finalizeColorTexture(mudflapCanvas, maxAnisotropy);
+  allTextures.push(cngMudflap);
+
   // 14. HERITAGE OLD PURANA DHAKA RED BRICK & WOODEN SHUTTER WALL (512x512)
   const brickCanvas = document.createElement('canvas');
   brickCanvas.width = 512;
@@ -933,6 +992,72 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   kaderFace.colorSpace = THREE.SRGBColorSpace;
   allTextures.push(kaderFace);
 
+  // 20. DHAKA ZEBRA CROSSING & STOP LINE ("জেব্রা ক্রসিং ও স্টপ লাইন")
+  const zebraCanvas = document.createElement('canvas');
+  zebraCanvas.width = 512;
+  zebraCanvas.height = 256;
+  const zCtx = zebraCanvas.getContext('2d')!;
+  zCtx.fillStyle = '#181b22';
+  zCtx.fillRect(0, 0, 512, 256);
+
+  // Solid white stop bar
+  zCtx.fillStyle = '#f8fafc';
+  zCtx.fillRect(16, 12, 480, 24);
+
+  // Bold alternating zebra pedestrian stripes
+  for (let x = 24; x < 490; x += 54) {
+    zCtx.fillStyle = '#f8fafc';
+    zCtx.fillRect(x, 60, 36, 175);
+    // Slight weathering wear
+    zCtx.fillStyle = 'rgba(24, 27, 34, 0.15)';
+    zCtx.fillRect(x + 4, 110, 28, 25);
+  }
+  const zebraCrossing = finalizeColorTexture(zebraCanvas, maxAnisotropy, 1, 1);
+  allTextures.push(zebraCrossing);
+
+  // 21. DMP TRAFFIC GANTRY SIGNBOARD ("ঢাকা মেট্রোপলিটন পুলিশ ট্রাফিক সিগন্যাল সাইনবোর্ড")
+  const dmpCanvas = document.createElement('canvas');
+  dmpCanvas.width = 512;
+  dmpCanvas.height = 160;
+  const dCtx = dmpCanvas.getContext('2d')!;
+  dCtx.fillStyle = '#1e3a8a';
+  dCtx.fillRect(0, 0, 512, 160);
+
+  // Border and header
+  dCtx.strokeStyle = '#ffffff';
+  dCtx.lineWidth = 6;
+  dCtx.strokeRect(6, 6, 500, 148);
+
+  dCtx.fillStyle = '#facc15';
+  dCtx.fillRect(12, 12, 488, 36);
+
+  dCtx.fillStyle = '#1e293b';
+  dCtx.font = 'bold 22px sans-serif';
+  dCtx.textAlign = 'center';
+  dCtx.fillText('ঢাকা মেট্রোপলিটন পুলিশ • ট্রাফিক বিভাগ', 256, 38);
+
+  dCtx.fillStyle = '#ffffff';
+  dCtx.font = '900 28px sans-serif';
+  dCtx.fillText('DMP TRAFFIC INTERSECTION', 256, 84);
+
+  dCtx.fillStyle = '#93c5fd';
+  dCtx.font = 'bold 18px sans-serif';
+  dCtx.fillText('লাল বাতি: থামুন • সিগন্যাল অমান্য আইনত দণ্ডনীয়', 256, 122);
+
+  // Signal dots
+  const dotY = 82;
+  dCtx.fillStyle = '#ef4444';
+  dCtx.beginPath();
+  dCtx.arc(42, dotY, 14, 0, Math.PI * 2);
+  dCtx.fill();
+  dCtx.fillStyle = '#10b981';
+  dCtx.beginPath();
+  dCtx.arc(470, dotY, 14, 0, Math.PI * 2);
+  dCtx.fill();
+
+  const trafficSignDmp = finalizeColorTexture(dmpCanvas, maxAnisotropy, 1, 1);
+  allTextures.push(trafficSignDmp);
+
   return {
     asphalt,
     curb,
@@ -954,8 +1079,12 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
     cngPlate,
     cngFrontBanner,
     cngMeter,
+    cngChevrons,
+    cngMudflap,
     kaderFace,
     lungis,
+    zebraCrossing,
+    trafficSignDmp,
     disposeAll: () => {
       allTextures.forEach((t) => t.dispose());
     },

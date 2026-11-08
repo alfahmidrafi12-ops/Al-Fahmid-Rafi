@@ -117,7 +117,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               <button
                 key={drv.id}
                 type="button"
-                onClick={() => onSelectDriver(drv.id)}
+                onClick={() => {
+                  soundEngine.playSelectGxVoice();
+                  onSelectDriver(drv.id);
+                }}
                 className={`group flex flex-col items-start rounded-xl border p-3.5 text-left transition-all cursor-pointer ${
                   isSelected
                     ? 'border-amber-400 bg-amber-500/15 shadow-lg shadow-amber-500/10'
@@ -161,31 +164,55 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         </div>
 
         {/* Sound FX Preview Bar */}
-        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/60 px-3.5 py-2">
-          <span className="text-xs font-semibold text-amber-400">সাউন্ড টেস্ট:</span>
+        <div className="mt-4 flex flex-wrap items-center gap-1.5 rounded-xl border border-white/10 bg-zinc-900/70 p-2.5">
+          <span className="text-xs font-semibold text-amber-400 mr-1">সাউন্ড টেস্ট:</span>
           <button
             type="button"
-            onClick={() => soundEngine.playGameStartVoice()}
-            className="rounded-lg bg-zinc-800/90 px-2.5 py-1 text-xs text-zinc-200 hover:bg-amber-500 hover:text-zinc-950 transition-colors cursor-pointer"
-            title="গেম শুরুর ডায়লগ শুনুন"
+            onClick={() => soundEngine.playDrivingMilonVoice()}
+            className="rounded-lg bg-zinc-800/90 px-2 py-1 text-[11px] text-zinc-200 hover:bg-sky-500 hover:text-zinc-950 transition-colors cursor-pointer"
+            title="রাস্তায় চলার ডায়লগ"
           >
-            🔊 গরীবেরা ভালো আছো?
+            🚁 কেমন আছো মিলন
           </button>
           <button
             type="button"
-            onClick={() => soundEngine.playCrashVoice()}
-            className="rounded-lg bg-zinc-800/90 px-2.5 py-1 text-xs text-zinc-200 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer"
-            title="সংঘর্ষের ডায়লগ শুনুন"
+            onClick={() => soundEngine.playCrashRagVoice()}
+            className="rounded-lg bg-zinc-800/90 px-2 py-1 text-[11px] text-zinc-200 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer"
+            title="ধাক্কা লাগার ডায়লগ"
           >
-            💥 ও কি লাগছে!
+            💥 রাগ করলা?
           </button>
           <button
             type="button"
-            onClick={() => soundEngine.playCaughtVoice()}
-            className="rounded-lg bg-zinc-800/90 px-2.5 py-1 text-xs text-zinc-200 hover:bg-red-600 hover:text-white transition-colors cursor-pointer"
-            title="রিকশা ধরে ফেলার ডায়লগ শুনুন"
+            onClick={() => soundEngine.playDangerDewVoice()}
+            className="rounded-lg bg-zinc-800/90 px-2 py-1 text-[11px] text-zinc-200 hover:bg-amber-500 hover:text-zinc-950 transition-colors cursor-pointer"
+            title="ধরা পড়ার আগের ডায়লগ"
           >
-            🚨 রিকশা ধাওয়া
+            ⚠️ মাউন্টেন ডিউ
+          </button>
+          <button
+            type="button"
+            onClick={() => soundEngine.playCaughtVulVoice()}
+            className="rounded-lg bg-zinc-800/90 px-2 py-1 text-[11px] text-zinc-200 hover:bg-red-600 hover:text-white transition-colors cursor-pointer"
+            title="ধরা পড়ার পরের ডায়লগ"
+          >
+            🚨 ক্ষমা করে দেন
+          </button>
+          <button
+            type="button"
+            onClick={() => soundEngine.playSelectGxVoice(true)}
+            className="rounded-lg bg-zinc-800/90 px-2 py-1 text-[11px] text-zinc-200 hover:bg-purple-600 hover:text-white transition-colors cursor-pointer"
+            title="প্লেয়ার সিলেক্ট ডায়লগ (হিসাব বোঝ না?)"
+          >
+            🤔 হিসাব বোঝ না?
+          </button>
+          <button
+            type="button"
+            onClick={() => soundEngine.playDipjolVoice()}
+            className="rounded-lg bg-zinc-800/90 px-2 py-1 text-[11px] text-zinc-200 hover:bg-emerald-600 hover:text-white transition-colors cursor-pointer"
+            title="মানুষ মারার ও গাড়ি স্টার্টের ডায়লগ"
+          >
+            😈 দিপজল
           </button>
         </div>
 

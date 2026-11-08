@@ -37,7 +37,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
           <p className="mt-1.5 text-sm text-zinc-300">
             {isPaused
               ? `${driver.nameBn}-এর রিকশা বর্তমানে থামানো আছে।`
-              : 'ক্ষিপ্ত পুরান ঢাকাবাসী ও ট্রাফিক আপনার রিকশা ঘিরে ফেলেছে!'}
+              : '“আমার ভুল হয়েছে, ক্ষমা করে দেন!” — ক্ষিপ্ত পুরান ঢাকাবাসী ঘিরে ফেলেছে!'}
           </p>
         </div>
 

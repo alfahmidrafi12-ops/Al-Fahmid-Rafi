@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DriverProfile } from '../types/game';
+import { DriverProfile, SignalColor } from '../types/game';
 import { ProceduralTexturePack } from './textures';
 
 export interface RickshawRig {
@@ -169,88 +169,146 @@ export function createRickshawModel(textures: ProceduralTexturePack): RickshawRi
   rearWheelR.position.set(0.88, wheelRadius, 0.82);
   root.add(rearWheelR);
 
-  // Rear wheel fenders
-  const fenderGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.16, 18, 1, true, -Math.PI * 0.48, Math.PI * 0.96);
+  // Rear wheel fenders - perfectly aligned concentric with wheels
+  const fenderGeo = new THREE.CylinderGeometry(0.48, 0.48, 0.12, 20, 1, true, -Math.PI * 0.45, Math.PI * 0.9);
   [-0.88, 0.88].forEach((xPos) => {
     const fender = new THREE.Mesh(fenderGeo, goldTrimMat);
     fender.rotation.z = Math.PI / 2;
-    fender.position.set(xPos, wheelRadius + 0.02, 0.82);
+    fender.position.set(xPos, wheelRadius + 0.015, 0.82);
     chassisTilt.add(fender);
+
+    // Chrome fender stays
+    const stayF = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.32, 6), chromeMat);
+    stayF.position.set(xPos, wheelRadius + 0.12, 0.58);
+    stayF.rotation.x = 0.6;
+    chassisTilt.add(stayF);
+
+    const stayR = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.32, 6), chromeMat);
+    stayR.position.set(xPos, wheelRadius + 0.12, 1.06);
+    stayR.rotation.x = -0.6;
+    chassisTilt.add(stayR);
   });
 
   // 2. Wooden Footboard & Passenger Cushion
-  const footboard = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.1, 1.35), framePaintMat);
-  footboard.position.set(0, 0.52, 0.48);
+  const footboard = new THREE.Mesh(new THREE.BoxGeometry(1.44, 0.08, 1.25), framePaintMat);
+  footboard.position.set(0, 0.52, 0.52);
   footboard.castShadow = true;
   footboard.receiveShadow = true;
   chassisTilt.add(footboard);
 
-  [-0.72, 0.72].forEach((xPos) => {
-    const sidePanel = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.44, 1.12), hoodFolkMat);
-    sidePanel.position.set(xPos, 0.78, 0.68);
+  // Side armrests & folk art panels
+  [-0.69, 0.69].forEach((xPos) => {
+    const sidePanel = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.38, 0.62), hoodFolkMat);
+    sidePanel.position.set(xPos, 0.78, 0.76);
     sidePanel.castShadow = true;
     chassisTilt.add(sidePanel);
+
+    // Gold brass handrail bar
+    const handrail = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.64, 8), goldTrimMat);
+    handrail.rotation.x = Math.PI / 2;
+    handrail.position.set(xPos, 0.98, 0.76);
+    chassisTilt.add(handrail);
   });
 
-  const seatBase = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.22, 0.68), seatCushionMat);
-  seatBase.position.set(0, 0.72, 0.82);
+  // Passenger seat base & cushioned backrest
+  const seatBase = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.2, 0.62), seatCushionMat);
+  seatBase.position.set(0, 0.68, 0.76);
   seatBase.castShadow = true;
   chassisTilt.add(seatBase);
 
-  const seatBack = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.54, 0.14), seatCushionMat);
-  seatBack.position.set(0, 1.06, 1.12);
+  const seatBack = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.52, 0.12), seatCushionMat);
+  seatBack.position.set(0, 1.04, 1.05);
   seatBack.rotation.x = 0.12;
   seatBack.castShadow = true;
   chassisTilt.add(seatBack);
 
-  const rearBoard = new THREE.Mesh(new THREE.BoxGeometry(1.34, 0.46, 0.04), rearPlateMat);
-  rearBoard.position.set(0, 0.78, 1.21);
+  // Signature Rear Rickshaw Art Tin Plate ("মায়ের দোয়া", etc.) mounted flush
+  const rearBoard = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.44, 0.03), rearPlateMat);
+  rearBoard.position.set(0, 0.78, 1.13);
   chassisTilt.add(rearBoard);
 
-  // 3. Arched Rickshaw Hood
+  // 3. Arched Rickshaw Hood (folding canvas canopy)
   const hoodArch = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.76, 0.76, 1.46, 20, 1, false, 0, Math.PI),
+    new THREE.CylinderGeometry(0.72, 0.72, 1.38, 24, 1, false, 0, Math.PI),
     hoodFolkMat
   );
   hoodArch.rotation.z = Math.PI / 2;
-  hoodArch.position.set(0, 1.46, 0.76);
+  hoodArch.position.set(0, 1.4, 0.62);
   hoodArch.castShadow = true;
   chassisTilt.add(hoodArch);
 
+  // Front Rib hoop framing the front opening of the hood
   const frontRib = new THREE.Mesh(
-    new THREE.TorusGeometry(0.75, 0.025, 8, 24, Math.PI),
+    new THREE.TorusGeometry(0.72, 0.024, 8, 28, Math.PI),
     goldTrimMat
   );
-  frontRib.position.set(0, 1.46, 0.15);
+  frontRib.position.set(0, 1.4, 0.05);
   chassisTilt.add(frontRib);
 
-  // Hanging decorative tassels
-  [-0.52, 0, 0.52].forEach((xPos) => {
-    const tassel = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.16, 8), goldTrimMat);
-    tassel.position.set(xPos, 1.98 - Math.abs(xPos) * 0.35, 0.15);
+  // Rear Rib hoop framing the back of the hood
+  const rearRib = new THREE.Mesh(
+    new THREE.TorusGeometry(0.72, 0.02, 8, 28, Math.PI),
+    goldTrimMat
+  );
+  rearRib.position.set(0, 1.4, 1.18);
+  chassisTilt.add(rearRib);
+
+  // Chrome Folding Scissor Stays (লৌহের ভাঁজ করা হাতল) on both sides of hood
+  [-0.71, 0.71].forEach((sx) => {
+    const scissor1 = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.45, 0.025), chromeMat);
+    scissor1.position.set(sx, 1.15, 0.52);
+    scissor1.rotation.x = 0.55;
+    chassisTilt.add(scissor1);
+
+    const scissor2 = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.45, 0.025), chromeMat);
+    scissor2.position.set(sx, 1.15, 0.72);
+    scissor2.rotation.x = -0.55;
+    chassisTilt.add(scissor2);
+  });
+
+  // Hanging decorative tassels along front canopy rib
+  [-0.48, -0.24, 0, 0.24, 0.48].forEach((xPos) => {
+    const tassel = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.15, 8), goldTrimMat);
+    const yArc = Math.sqrt(Math.max(0, 0.72 * 0.72 - xPos * xPos));
+    tassel.position.set(xPos, 1.4 + yArc - 0.14, 0.05);
     tassel.rotation.x = Math.PI;
     chassisTilt.add(tassel);
   });
 
-  // 4. Frame Spine & Saddle
-  const spineTube = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, 1.85, 10), framePaintMat);
-  spineTube.rotation.x = Math.PI / 2 - 0.18;
-  spineTube.position.set(0, 0.64, -0.35);
+  // 4. Frame Spine, Rear Truss Stays & Driver Saddle
+  const spineTube = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.042, 1.75, 10), framePaintMat);
+  spineTube.rotation.x = Math.PI / 2 - 0.2;
+  spineTube.position.set(0, 0.65, -0.32);
   spineTube.castShadow = true;
   chassisTilt.add(spineTube);
 
-  const seatPost = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.48, 10), chromeMat);
-  seatPost.position.set(0, 0.88, -0.36);
+  // Top Tube linking head tube to seat post
+  const topTube = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.92, 8), framePaintMat);
+  topTube.rotation.x = Math.PI / 2 - 0.12;
+  topTube.position.set(0, 1.05, -0.76);
+  chassisTilt.add(topTube);
+
+  // Rear Chainstays connecting rear axle to bottom bracket
+  [-0.32, 0.32].forEach((cx) => {
+    const stay = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 1.42, 8), framePaintMat);
+    stay.position.set(cx, 0.46, 0.12);
+    stay.rotation.x = Math.PI / 2;
+    stay.rotation.y = cx > 0 ? 0.22 : -0.22;
+    chassisTilt.add(stay);
+  });
+
+  const seatPost = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.45, 10), chromeMat);
+  seatPost.position.set(0, 0.86, -0.34);
   seatPost.rotation.x = -0.15;
   chassisTilt.add(seatPost);
 
   const driverSaddle = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.32), tireMat);
-  driverSaddle.position.set(0, 1.11, -0.33);
+  driverSaddle.position.set(0, 1.09, -0.32);
   chassisTilt.add(driverSaddle);
 
-  // Pedal Crank
+  // Pedal Crank & Chainring
   const pedalCrank = new THREE.Group();
-  pedalCrank.position.set(0, 0.48, -0.58);
+  pedalCrank.position.set(0, 0.46, -0.55);
   const chainring = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.02, 16), goldTrimMat);
   chainring.rotation.z = Math.PI / 2;
   pedalCrank.add(chainring);
@@ -267,19 +325,19 @@ export function createRickshawModel(textures: ProceduralTexturePack): RickshawRi
   chassisTilt.add(steeringColumn);
 
   const headTube = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.86, 10), chromeMat);
-  headTube.position.set(0, 0.96, 0.06);
-  headTube.rotation.x = 0.2;
+  headTube.position.set(0, 0.95, 0.02);
+  headTube.rotation.x = 0.12;
   steeringColumn.add(headTube);
 
   [-0.09, 0.09].forEach((xPos) => {
-    const blade = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.018, 0.56, 8), framePaintMat);
-    blade.position.set(xPos, 0.62, 0.02);
+    const blade = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.018, 0.54, 8), framePaintMat);
+    blade.position.set(xPos, 0.62, 0.01);
     steeringColumn.add(blade);
   });
 
   const frontFender = new THREE.Mesh(fenderGeo, goldTrimMat);
   frontFender.rotation.z = Math.PI / 2;
-  frontFender.position.set(0, wheelRadius + 0.02, 0);
+  frontFender.position.set(0, wheelRadius + 0.015, 0);
   steeringColumn.add(frontFender);
 
   const frontWheel = createSpokedWheel(wheelRadius, 0.055);
@@ -297,6 +355,21 @@ export function createRickshawModel(textures: ProceduralTexturePack): RickshawRi
     grip.rotation.x = Math.PI / 2;
     grip.position.set(xPos, 1.34, 0.22);
     steeringColumn.add(grip);
+  });
+
+  // Colorful fluttering handlebar streamers (রঙিন ফিতা ও ঝালর)
+  const ribbonColors = [0xef4444, 0x10b981, 0xfacc15, 0x3b82f6];
+  [-0.39, 0.39].forEach((xPos) => {
+    for (let r = 0; r < 4; r++) {
+      const ribbon = new THREE.Mesh(
+        new THREE.BoxGeometry(0.015, 0.2, 0.008),
+        new THREE.MeshStandardMaterial({ color: ribbonColors[r], roughness: 0.4 })
+      );
+      ribbon.position.set(xPos + (xPos > 0 ? 0.018 * r : -0.018 * r), 1.24, 0.22 + r * 0.02);
+      ribbon.rotation.z = xPos > 0 ? -0.18 * r : 0.18 * r;
+      ribbon.rotation.x = 0.22;
+      steeringColumn.add(ribbon);
+    }
   });
 
   // Brass Bell
@@ -439,36 +512,35 @@ export function createDriverModel(
   headGroup.rotation.x = 0.22;
   torso.add(headGroup);
 
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.175, 16, 16), skinMat);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 16), skinMat);
   skull.castShadow = true;
   headGroup.add(skull);
 
   if (profile.id === 'kader' && textures.kaderFace) {
-    // Exact realistic photo face of Obaidul Quader mapped onto the 3D model
+    // Exact realistic photo face of Obaidul Quader
+    // Photo already includes his signature spectacles - no obscuring black bar!
     const faceMat = new THREE.MeshStandardMaterial({
       map: textures.kaderFace,
-      roughness: 0.5,
-      metalness: 0.05,
+      roughness: 0.28,
+      metalness: 0.02,
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3,
     });
-    const facePlate = new THREE.Mesh(new THREE.PlaneGeometry(0.27, 0.35), faceMat);
-    facePlate.position.set(0, 0.015, -0.172);
+    const facePlate = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.36), faceMat);
+    facePlate.position.set(0, 0.02, -0.176);
     facePlate.rotation.y = Math.PI;
+    facePlate.scale.x = -1; // Correct orientation so the portrait is not mirrored
     headGroup.add(facePlate);
 
-    // Hair cap styled to his black trimmed hairstyle
+    // Hair cap styled to his trimmed hairstyle at the back and top, leaving face completely clear
     const hairCap = new THREE.Mesh(
-      new THREE.SphereGeometry(0.182, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.52),
+      new THREE.SphereGeometry(0.176, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.44),
       hairMat
     );
-    hairCap.rotation.x = -0.22;
-    hairCap.position.y = 0.04;
+    hairCap.rotation.x = -0.28;
+    hairCap.position.set(0, 0.05, 0.02);
     headGroup.add(hairCap);
-
-    // His iconic black-rimmed spectacles
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.15, metalness: 0.85 });
-    const glasses = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.075, 0.035), frameMat);
-    glasses.position.set(0, 0.045, -0.185);
-    headGroup.add(glasses);
   } else {
     const hairCap = new THREE.Mesh(
       new THREE.SphereGeometry(0.182, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.58),
@@ -786,23 +858,68 @@ export function createCngModel(textures: ProceduralTexturePack): THREE.Group {
   stripeR.position.set(0.795, 0.46, 0.15);
   cng.add(stripeR);
 
-  // 2. Front Tapered Nose & Cowl (signature Bajaj RE front)
-  const noseHood = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.74, 0.95, 12), cngGreenMat);
-  noseHood.rotation.x = Math.PI / 2;
-  noseHood.position.set(0, 0.54, -1.22);
-  noseHood.castShadow = true;
-  cng.add(noseHood);
+  // 2. Front Aerodynamic Apron & Cowl (Authentic Bajaj RE 4-Stroke)
+  // Sloping upper apron running down from windshield
+  const frontApron = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.48, 0.72), cngGreenMat);
+  frontApron.position.set(0, 0.66, -1.05);
+  frontApron.rotation.x = 0.36;
+  frontApron.castShadow = true;
+  cng.add(frontApron);
 
-  const noseTip = new THREE.Mesh(new THREE.SphereGeometry(0.43, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), cngGreenMat);
-  noseTip.rotation.x = -Math.PI / 2;
-  noseTip.position.set(0, 0.54, -1.68);
-  cng.add(noseTip);
+  // Front prow & nose cowl (covers steering head & headlamp mount)
+  const noseCowl = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.46, 0.46, 16), cngGreenMat);
+  noseCowl.rotation.x = Math.PI / 2;
+  noseCowl.position.set(0, 0.54, -1.36);
+  noseCowl.castShadow = true;
+  cng.add(noseCowl);
 
-  // Front chrome crash bumper bar
-  const crashBar = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.25, 8), chromeMat);
-  crashBar.rotation.z = Math.PI / 2;
-  crashBar.position.set(0, 0.32, -1.62);
-  cng.add(crashBar);
+  // Front curved wheel mudguard / fender that hugs the front wheel closely
+  const frontMudguard = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.34, 0.34, 0.22, 16, 1, true, -Math.PI * 0.42, Math.PI * 0.84),
+    cngGreenMat
+  );
+  frontMudguard.rotation.z = Math.PI / 2;
+  frontMudguard.position.set(0, 0.34, -1.35);
+  frontMudguard.castShadow = true;
+  cng.add(frontMudguard);
+
+  // Front dual telescopic fork struts connecting wheel hub to steering stem
+  [-0.12, 0.12].forEach((fx) => {
+    const forkStrut = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.46, 8), chromeMat);
+    forkStrut.position.set(fx, 0.46, -1.33);
+    forkStrut.rotation.x = 0.18;
+    cng.add(forkStrut);
+  });
+
+  // Authentic Dhaka CNG Front Heavy Tubular Bullbar / Crash Bumper
+  const bullbarGroup = new THREE.Group();
+  bullbarGroup.position.set(0, 0.28, -1.56);
+  cng.add(bullbarGroup);
+
+  const mainBumperBar = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 1.15, 10), chromeMat);
+  mainBumperBar.rotation.z = Math.PI / 2;
+  bullbarGroup.add(mainBumperBar);
+
+  const upperBumperBar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.88, 10), chromeMat);
+  upperBumperBar.rotation.z = Math.PI / 2;
+  upperBumperBar.position.set(0, 0.14, -0.02);
+  bullbarGroup.add(upperBumperBar);
+
+  // Vertical connecting bumper stays
+  [-0.32, 0.32].forEach((bx) => {
+    const bumperStay = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.16, 8), chromeMat);
+    bumperStay.position.set(bx, 0.07, -0.01);
+    bullbarGroup.add(bumperStay);
+  });
+
+  // Curved return tubes protecting the front corners
+  [-0.56, 0.56].forEach((rx) => {
+    const returnBar = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.35, 8), chromeMat);
+    returnBar.position.set(rx, 0, 0.16);
+    returnBar.rotation.y = rx > 0 ? 0.65 : -0.65;
+    returnBar.rotation.x = Math.PI / 2;
+    bullbarGroup.add(returnBar);
+  });
 
   // 3. Cabin Upper Roof Arch (textured dark green / black canvas top)
   const roof = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.58, 2.15), cngDarkGreenMat);
@@ -900,24 +1017,137 @@ export function createCngModel(textures: ProceduralTexturePack): THREE.Group {
   passengerBench.position.set(0, 0.62, 0.72);
   cng.add(passengerBench);
 
-  // 7. Headlight & Turn Signals
-  const headlampBezel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.06, 14), chromeMat);
+  // 6b. AUTHENTIC DHAKA CNG DRIVER (সিএনজি চালক মামা)
+  const cngDriverGroup = new THREE.Group();
+  cngDriverGroup.position.set(0, 0.68, -0.2);
+  cng.add(cngDriverGroup);
+
+  // Driver Lungi & Lower Body
+  const lungiMat = new THREE.MeshStandardMaterial({
+    map: textures.lungis[0],
+    roughness: 0.65,
+  });
+  const driverLegs = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.36, 0.4), lungiMat);
+  driverLegs.position.set(0, 0.18, 0);
+  cngDriverGroup.add(driverLegs);
+
+  // Driver Shirt & Torso (Teal/Sky checked shirt)
+  const shirtMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.7 });
+  const driverTorso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.48, 0.28), shirtMat);
+  driverTorso.position.set(0, 0.52, -0.04);
+  driverTorso.rotation.x = 0.14;
+  cngDriverGroup.add(driverTorso);
+
+  // Gamcha draped over shoulder (লাল গামছা)
+  const gamchaMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.8 });
+  const gamchaShoulder = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.34, 0.3), gamchaMat);
+  gamchaShoulder.position.set(0.18, 0.56, -0.04);
+  cngDriverGroup.add(gamchaShoulder);
+
+  // Driver Arms reaching to handlebars
+  const cngSkinMat = new THREE.MeshStandardMaterial({ color: 0x8d5b4c, roughness: 0.7 });
+  [-0.18, 0.18].forEach((ax) => {
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.042, 0.42, 8), shirtMat);
+    arm.position.set(ax, 0.52, -0.2);
+    arm.rotation.x = Math.PI / 2.3;
+    arm.rotation.z = ax > 0 ? 0.1 : -0.1;
+    cngDriverGroup.add(arm);
+
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.048, 8, 8), cngSkinMat);
+    hand.position.set(ax, 0.44, -0.38);
+    cngDriverGroup.add(hand);
+  });
+
+  // Driver Head with Gamcha/Cap & Mustache
+  const cngHeadGroup = new THREE.Group();
+  cngHeadGroup.position.set(0, 0.86, -0.08);
+  cngDriverGroup.add(cngHeadGroup);
+
+  const cngSkull = new THREE.Mesh(new THREE.SphereGeometry(0.135, 12, 12), cngSkinMat);
+  cngHeadGroup.add(cngSkull);
+
+  const capMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.138, 0.14, 0.07, 12),
+    gamchaMat
+  );
+  capMesh.position.set(0, 0.07, 0);
+  cngHeadGroup.add(capMesh);
+
+  const mustache = new THREE.Mesh(
+    new THREE.BoxGeometry(0.13, 0.03, 0.035),
+    new THREE.MeshStandardMaterial({ color: 0x18181b })
+  );
+  mustache.position.set(0, -0.03, -0.135);
+  cngHeadGroup.add(mustache);
+
+  // 6c. HEAVY COMPRESSED NATURAL GAS CYLINDER TANK ("গ্যাস সিলিন্ডার")
+  const gasTankGroup = new THREE.Group();
+  gasTankGroup.position.set(0, 0.82, 1.02);
+  cng.add(gasTankGroup);
+
+  const tankMat = new THREE.MeshStandardMaterial({
+    color: 0x334155, // Steel industrial grey-green cylinder
+    roughness: 0.32,
+    metalness: 0.75,
+  });
+  const tankCylinder = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.19, 0.19, 1.15, 16),
+    tankMat
+  );
+  tankCylinder.rotation.z = Math.PI / 2;
+  tankCylinder.castShadow = true;
+  gasTankGroup.add(tankCylinder);
+
+  [-0.575, 0.575].forEach((capX) => {
+    const endCap = new THREE.Mesh(
+      new THREE.SphereGeometry(0.19, 12, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+      tankMat
+    );
+    endCap.rotation.z = capX > 0 ? -Math.PI / 2 : Math.PI / 2;
+    endCap.position.set(capX, 0, 0);
+    gasTankGroup.add(endCap);
+  });
+
+  // Brass High-Pressure Valve & Yellow Shutoff Knob
+  const valveMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.2, metalness: 0.85 });
+  const valve = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.13, 8), valveMat);
+  valve.position.set(0.52, 0.11, 0);
+  gasTankGroup.add(valve);
+
+  const knob = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.055, 0.055, 0.03, 8),
+    new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.3 })
+  );
+  knob.position.set(0.52, 0.18, 0);
+  gasTankGroup.add(knob);
+
+  // 7. Headlight, Bajaj Horn Grill & Turn Signals (mounted flush to front nose cowl)
+  const headlampBezel = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.05, 16), chromeMat);
   headlampBezel.rotation.x = Math.PI / 2;
-  headlampBezel.position.set(0, 0.64, -1.82);
+  headlampBezel.position.set(0, 0.62, -1.54);
   cng.add(headlampBezel);
 
   const headlampGlow = new THREE.Mesh(
-    new THREE.CircleGeometry(0.14, 12),
+    new THREE.CircleGeometry(0.13, 14),
     new THREE.MeshBasicMaterial({ color: 0xfef08a })
   );
   headlampGlow.rotation.y = Math.PI;
-  headlampGlow.position.set(0, 0.64, -1.86);
+  headlampGlow.position.set(0, 0.62, -1.57);
   cng.add(headlampGlow);
 
-  // Front Amber Indicators
-  [-0.45, 0.45].forEach((ix) => {
-    const turnLight = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.04), amberLightMat);
-    turnLight.position.set(ix, 0.58, -1.65);
+  // Bajaj RE front horn grill / chrome logo badge below headlamp
+  const hornGrille = new THREE.Mesh(
+    new THREE.BoxGeometry(0.18, 0.09, 0.03),
+    new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.35, metalness: 0.85 })
+  );
+  hornGrille.position.set(0, 0.46, -1.52);
+  cng.add(hornGrille);
+
+  // Front Amber Indicators integrated into left & right apron shoulders
+  [-0.34, 0.34].forEach((ix) => {
+    const turnLight = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.04), amberLightMat);
+    turnLight.position.set(ix, 0.58, -1.36);
+    turnLight.rotation.y = ix > 0 ? -0.22 : 0.22;
     cng.add(turnLight);
   });
 
@@ -940,10 +1170,47 @@ export function createCngModel(textures: ProceduralTexturePack): THREE.Group {
     cng.add(blinker);
   });
 
-  // Rear Black Rubber Bumper
+  // 8b. MOUNTED REAR SPARE TIRE (স্পেয়ার চাকা)
+  const spareWheelGroup = new THREE.Group();
+  spareWheelGroup.position.set(0, 0.94, 1.34);
+  cng.add(spareWheelGroup);
+
+  const spareTire = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.26, 0.26, 0.12, 16),
+    new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.88 })
+  );
+  spareTire.rotation.x = Math.PI / 2;
+  spareWheelGroup.add(spareTire);
+
+  const spareRim = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.15, 0.15, 0.13, 12),
+    new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.35, metalness: 0.75 })
+  );
+  spareRim.rotation.x = Math.PI / 2;
+  spareWheelGroup.add(spareRim);
+
+  // 8c. REAR BUMPER, YELLOW/BLACK SAFETY CHEVRONS & MUDFLAPS
   const rearBumper = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.12, 0.12), blackVinylMat);
   rearBumper.position.set(0, 0.35, 1.35);
   cng.add(rearBumper);
+
+  const chevronBar = new THREE.Mesh(
+    new THREE.BoxGeometry(1.58, 0.1, 0.02),
+    new THREE.MeshStandardMaterial({ map: textures.cngChevrons, roughness: 0.35 })
+  );
+  chevronBar.position.set(0, 0.35, 1.42);
+  cng.add(chevronBar);
+
+  // Dual Rubber Mudflaps ("মায়ের দোয়া")
+  [-0.64, 0.64].forEach((fx) => {
+    const flap = new THREE.Mesh(
+      new THREE.BoxGeometry(0.28, 0.3, 0.02),
+      new THREE.MeshStandardMaterial({ map: textures.cngMudflap, roughness: 0.85 })
+    );
+    flap.position.set(fx, 0.2, 1.25);
+    flap.rotation.x = 0.1;
+    cng.add(flap);
+  });
 
   // 9. Wheels & Suspension (1 Front, 2 Rear)
   const tireMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.88 });
@@ -973,7 +1240,7 @@ export function createCngModel(textures: ProceduralTexturePack): THREE.Group {
     return wheelGroup;
   };
 
-  cng.add(buildWheel(0, 0.3, -1.24, true));
+  cng.add(buildWheel(0, 0.3, -1.35, true));
   cng.add(buildWheel(-0.76, 0.3, 0.78, false));
   cng.add(buildWheel(0.76, 0.3, 0.78, false));
 
@@ -1772,7 +2039,7 @@ export function createTrafficRickshawModel(
   chassis.castShadow = true;
   rick.add(chassis);
 
-  // Decorative Folk Art Hood
+  // Decorative Folk Art Hood & Passenger Seat
   const hood = new THREE.Mesh(
     new THREE.CylinderGeometry(0.58, 0.58, 0.95, 12, 1, false, 0, Math.PI),
     hoodMat
@@ -1783,16 +2050,60 @@ export function createTrafficRickshawModel(
   hood.castShadow = true;
   rick.add(hood);
 
-  // Rear tin folk plate
+  // Passenger Bench Cushion
+  const seatCushionMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.6 });
+  const passengerSeat = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.16, 0.48), seatCushionMat);
+  passengerSeat.position.set(0, 0.65, 0.45);
+  rick.add(passengerSeat);
+
+  // Rear tin folk art plate ("রিকশা আর্ট")
   const rearPlate = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.35, 0.02), rearPlateMat);
   rearPlate.position.set(0, 0.55, 0.98);
   rick.add(rearPlate);
+
+  // Rear wheel curved mudguards
+  [-0.52, 0.52].forEach((mx) => {
+    const mudguard = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.38, 0.38, 0.1, 12, 1, false, 0, Math.PI),
+      metalMat
+    );
+    mudguard.rotation.z = Math.PI / 2;
+    mudguard.position.set(mx, 0.36, 0.52);
+    rick.add(mudguard);
+  });
 
   // Front wheel fork
   const fork = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.65, 8), chromeMat);
   fork.position.set(0, 0.45, -0.92);
   fork.rotation.x = -0.25;
   rick.add(fork);
+
+  // Handlebars with brass bell & streamers
+  const handlebar = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.68, 8), chromeMat);
+  handlebar.rotation.z = Math.PI / 2;
+  handlebar.position.set(0, 1.15, -0.72);
+  rick.add(handlebar);
+
+  const bell = new THREE.Mesh(
+    new THREE.SphereGeometry(0.05, 8, 8, 0, Math.PI * 2, 0, Math.PI * 0.65),
+    new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.25, metalness: 0.85 })
+  );
+  bell.position.set(0.18, 1.18, -0.72);
+  rick.add(bell);
+
+  // Fluttering handlebar streamers
+  const streamerColors = [0xef4444, 0x10b981, 0xfacc15];
+  [-0.34, 0.34].forEach((sx) => {
+    for (let r = 0; r < 3; r++) {
+      const ribbon = new THREE.Mesh(
+        new THREE.BoxGeometry(0.012, 0.16, 0.008),
+        new THREE.MeshStandardMaterial({ color: streamerColors[r], roughness: 0.4 })
+      );
+      ribbon.position.set(sx + (sx > 0 ? 0.015 * r : -0.015 * r), 1.07, -0.72 + r * 0.018);
+      ribbon.rotation.z = sx > 0 ? -0.15 : 0.15;
+      rick.add(ribbon);
+    }
+  });
 
   // 3 Spoke Wheels
   const buildWheel = (wx: number, wy: number, wz: number) => {
@@ -1820,19 +2131,38 @@ export function createTrafficRickshawModel(
   driverLungi.position.set(0, 0.65, -0.32);
   rick.add(driverLungi);
 
-  const driverTorso = new THREE.Mesh(
-    new THREE.BoxGeometry(0.36, 0.46, 0.22),
-    new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.65 })
-  );
-  driverTorso.position.set(0, 1.08, -0.32);
+  const shirtColor = [0xf8fafc, 0x0284c7, 0x059669, 0xd97706][variant % 4];
+  const shirtMat = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.65 });
+  const driverTorso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.46, 0.22), shirtMat);
+  driverTorso.position.set(0, 1.05, -0.32);
+  driverTorso.rotation.x = 0.2;
   rick.add(driverTorso);
 
-  const driverHead = new THREE.Mesh(
-    new THREE.SphereGeometry(0.14, 10, 10),
-    new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.7 })
-  );
-  driverHead.position.set(0, 1.42, -0.32);
+  // Driver arms gripping handlebars
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.7 });
+  [-0.18, 0.18].forEach((ax) => {
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.038, 0.45, 8), shirtMat);
+    arm.position.set(ax, 1.05, -0.48);
+    arm.rotation.x = Math.PI / 2.3;
+    arm.rotation.z = ax > 0 ? 0.12 : -0.12;
+    rick.add(arm);
+
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.042, 8, 8), skinMat);
+    hand.position.set(ax * 1.15, 0.98, -0.68);
+    rick.add(hand);
+  });
+
+  const driverHead = new THREE.Mesh(new THREE.SphereGeometry(0.135, 10, 10), skinMat);
+  driverHead.position.set(0, 1.38, -0.26);
   rick.add(driverHead);
+
+  // Gamcha / Cap on driver head
+  const cap = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.138, 0.14, 0.065, 10),
+    new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.7 })
+  );
+  cap.position.set(0, 1.44, -0.26);
+  rick.add(cap);
 
   return rick;
 }
@@ -1861,4 +2191,635 @@ export function createFestiveBuntingGarland(
   garland.add(bannerMesh);
 
   return garland;
+}
+
+/**
+ * AUTHENTIC BANGLADESHI ROADSIDE TREES ("রাস্তার ধারের গাছ")
+ * Varieties:
+ * 0: Krishnachura Tree (কৃষ্ণচূড়া) - Fiery red/orange blossoms, broad canopy, terracotta circular brick planter with fallen petals
+ * 1: Coconut Palm (নারকেল গাছ) - Slender segmented curved trunk, arching palm fronds, hanging coconuts
+ * 2: Shady Banyan Tree (বটগাছ / কড়ই গাছ) - Spreading layered lush emerald canopy, aerial roots & whitewashed brick sitting platform
+ * 3: Slender Debdaru (দেবদারু) - Tall conical evergreen silhouette with raised planter curb
+ */
+export function createTreeModel(variant: number, textures?: ProceduralTexturePack): THREE.Group {
+  const tree = new THREE.Group();
+  if (textures?.contactShadow) {
+    tree.add(createContactShadowMesh(textures.contactShadow, 4.0, 4.0));
+  }
+
+  const barkMat = new THREE.MeshStandardMaterial({ color: 0x4a321e, roughness: 0.9, metalness: 0.05 });
+  const soilMat = new THREE.MeshStandardMaterial({ color: 0x3d2817, roughness: 0.95 });
+  const planterMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.85 });
+
+  const v = Math.abs(variant) % 4;
+
+  if (v === 0) {
+    // 0: Krishnachura (Royal Poinciana - কৃষ্ণচূড়া)
+    const planterRing = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.65, 1.75, 0.45, 16),
+      planterMat
+    );
+    planterRing.position.y = 0.225;
+    planterRing.receiveShadow = true;
+    tree.add(planterRing);
+
+    const soilMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.5, 1.5, 0.46, 14),
+      soilMat
+    );
+    soilMesh.position.y = 0.23;
+    tree.add(soilMesh);
+
+    // Fallen red blossoms around base
+    const petalMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+    for (let p = 0; p < 8; p++) {
+      const angle = (p / 8) * Math.PI * 2;
+      const r = 0.7 + (p % 3) * 0.25;
+      const petal = new THREE.Mesh(new THREE.CircleGeometry(0.12, 6), petalMat);
+      petal.rotation.x = -Math.PI / 2;
+      petal.position.set(Math.cos(angle) * r, 0.465, Math.sin(angle) * r);
+      tree.add(petal);
+    }
+
+    // Gnarled organic trunk
+    const trunkLower = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.48, 3.2, 8), barkMat);
+    trunkLower.position.set(0, 1.8, 0);
+    trunkLower.castShadow = true;
+    tree.add(trunkLower);
+
+    // Sprawling angled main branches
+    const branch1 = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.28, 2.8, 7), barkMat);
+    branch1.position.set(0.65, 3.9, 0.3);
+    branch1.rotation.z = -0.45;
+    branch1.rotation.x = 0.2;
+    branch1.castShadow = true;
+    tree.add(branch1);
+
+    const branch2 = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.26, 2.7, 7), barkMat);
+    branch2.position.set(-0.65, 3.8, -0.2);
+    branch2.rotation.z = 0.48;
+    branch2.rotation.x = -0.25;
+    branch2.castShadow = true;
+    tree.add(branch2);
+
+    // Umbrella foliage canopy
+    const greenMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.75 });
+    const flowerRedMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.6 });
+    const flowerOrangeMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.6 });
+
+    // Green umbrella clusters
+    [
+      [0, 5.2, 0, 2.5, 1.2],
+      [-1.3, 4.8, 0.5, 2.0, 1.0],
+      [1.4, 4.9, -0.4, 2.1, 1.0],
+      [0.2, 5.5, 1.2, 1.8, 0.9],
+      [-0.3, 5.4, -1.2, 1.9, 0.9],
+    ].forEach(([cx, cy, cz, rx, ry]) => {
+      const cluster = new THREE.Mesh(new THREE.SphereGeometry(rx, 8, 7), greenMat);
+      cluster.scale.set(1.0, ry / rx, 1.0);
+      cluster.position.set(cx, cy, cz);
+      cluster.castShadow = true;
+      tree.add(cluster);
+    });
+
+    // Vibrant Red & Orange Krishnachura Blossom Clusters
+    [
+      [0, 5.8, 0.2, 1.35, flowerRedMat],
+      [-1.1, 5.4, 0.7, 1.15, flowerOrangeMat],
+      [1.2, 5.5, -0.2, 1.2, flowerRedMat],
+      [0.5, 5.9, -0.9, 1.05, flowerOrangeMat],
+      [-0.8, 5.6, -1.0, 0.95, flowerRedMat],
+      [1.0, 5.3, 1.0, 1.05, flowerRedMat],
+    ].forEach(([fx, fy, fz, fr, fmat]) => {
+      const flowers = new THREE.Mesh(new THREE.DodecahedronGeometry(fr as number, 1), fmat as THREE.Material);
+      flowers.position.set(fx as number, fy as number, fz as number);
+      flowers.castShadow = true;
+      tree.add(flowers);
+    });
+
+  } else if (v === 1) {
+    // 1: Coconut Palm (নারকেল গাছ)
+    const baseCurb = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.3, 0.35, 12), planterMat);
+    baseCurb.position.y = 0.175;
+    tree.add(baseCurb);
+
+    const palmSoil = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.36, 10), soilMat);
+    palmSoil.position.y = 0.18;
+    tree.add(palmSoil);
+
+    // Slender curved trunk in 5 segmented tiers leaning toward street
+    const palmBarkMat = new THREE.MeshStandardMaterial({ color: 0x714b2d, roughness: 0.85 });
+    const trunkGroup = new THREE.Group();
+    let currY = 0.35;
+    let currX = 0;
+    const numTiers = 5;
+    for (let t = 0; t < numTiers; t++) {
+      const radiusTop = 0.22 - t * 0.02;
+      const radiusBottom = 0.26 - t * 0.02;
+      const seg = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, 1.4, 8), palmBarkMat);
+      seg.position.set(currX, currY + 0.7, 0);
+      seg.rotation.z = -0.06;
+      seg.castShadow = true;
+      trunkGroup.add(seg);
+      currY += 1.3;
+      currX += 0.22;
+    }
+    tree.add(trunkGroup);
+
+    // Crown of hanging coconuts
+    const nutMat = new THREE.MeshStandardMaterial({ color: 0x65a30d, roughness: 0.5 });
+    for (let n = 0; n < 4; n++) {
+      const angle = (n / 4) * Math.PI * 2;
+      const nut = new THREE.Mesh(new THREE.SphereGeometry(0.18, 6, 6), nutMat);
+      nut.scale.set(1.0, 1.3, 1.0);
+      nut.position.set(currX + Math.cos(angle) * 0.25, currY - 0.2, Math.sin(angle) * 0.25);
+      nut.castShadow = true;
+      tree.add(nut);
+    }
+
+    // Radiating arched palm fronds
+    const frondMat = new THREE.MeshStandardMaterial({
+      color: 0x16a34a,
+      roughness: 0.6,
+      side: THREE.DoubleSide,
+    });
+    const numFronds = 7;
+    for (let f = 0; f < numFronds; f++) {
+      const angle = (f / numFronds) * Math.PI * 2;
+      const frond = new THREE.Group();
+      frond.position.set(currX, currY, 0);
+      frond.rotation.y = angle;
+
+      const leafGeo = new THREE.ConeGeometry(0.45, 2.8, 4);
+      const leafMesh = new THREE.Mesh(leafGeo, frondMat);
+      leafMesh.position.set(0, 0.4, 1.2);
+      leafMesh.rotation.x = Math.PI / 2.8;
+      leafMesh.scale.set(1.0, 1.0, 0.2);
+      leafMesh.castShadow = true;
+      frond.add(leafMesh);
+
+      tree.add(frond);
+    }
+
+  } else if (v === 2) {
+    // 2: Shady Banyan Tree (বটগাছ / কড়ই গাছ) with sitting platform ("বসার বাঁধানো বেদি")
+    const benchMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.65 });
+    const benchTrimMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.7 });
+
+    const platform = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.3, 0.65, 12), benchMat);
+    platform.position.y = 0.325;
+    platform.receiveShadow = true;
+    tree.add(platform);
+
+    const platformRim = new THREE.Mesh(new THREE.CylinderGeometry(2.35, 2.35, 0.12, 12), benchTrimMat);
+    platformRim.position.y = 0.6;
+    tree.add(platformRim);
+
+    const banyanSoil = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 0.66, 10), soilMat);
+    banyanSoil.position.y = 0.33;
+    tree.add(banyanSoil);
+
+    const mainTrunk = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.95, 3.6, 10), barkMat);
+    mainTrunk.position.set(0, 2.1, 0);
+    mainTrunk.castShadow = true;
+    tree.add(mainTrunk);
+
+    [-0.55, 0.55].forEach((rx) => {
+      const rootPillar = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.8, 6), barkMat);
+      rootPillar.position.set(rx, 1.7, rx > 0 ? 0.45 : -0.45);
+      rootPillar.rotation.z = rx > 0 ? 0.12 : -0.12;
+      rootPillar.castShadow = true;
+      tree.add(rootPillar);
+    });
+
+    const deepGreenMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.8 });
+    const emeraldMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.75 });
+    const limeMat = new THREE.MeshStandardMaterial({ color: 0x4ade80, roughness: 0.7 });
+
+    [
+      [0, 5.0, 0, 3.2, 1.6, deepGreenMat],
+      [-1.4, 4.7, 0.8, 2.2, 1.2, emeraldMat],
+      [1.4, 4.8, -0.7, 2.3, 1.3, deepGreenMat],
+      [0.6, 5.6, 1.2, 2.0, 1.1, emeraldMat],
+      [-0.8, 5.7, -1.1, 2.1, 1.1, limeMat],
+      [0, 6.2, 0, 2.4, 1.4, limeMat],
+    ].forEach(([cx, cy, cz, rx, ry, mat]) => {
+      const foliage = new THREE.Mesh(new THREE.SphereGeometry(rx as number, 9, 7), mat as THREE.Material);
+      foliage.scale.set(1.0, (ry as number) / (rx as number), 1.0);
+      foliage.position.set(cx as number, cy as number, cz as number);
+      foliage.castShadow = true;
+      tree.add(foliage);
+    });
+
+  } else {
+    // 3: Slender Debdaru (দেবদারু গাছ)
+    const debPlanter = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.45, 1.6), planterMat);
+    debPlanter.position.y = 0.225;
+    tree.add(debPlanter);
+
+    const debSoil = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.46, 1.4), soilMat);
+    debSoil.position.y = 0.23;
+    tree.add(debSoil);
+
+    const debTrunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 4.5, 8), barkMat);
+    debTrunk.position.y = 2.4;
+    debTrunk.castShadow = true;
+    tree.add(debTrunk);
+
+    const debFoliageMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.7 });
+    const cones = [
+      { y: 3.2, r: 1.5, h: 2.2 },
+      { y: 4.6, r: 1.25, h: 2.2 },
+      { y: 5.9, r: 0.95, h: 2.0 },
+      { y: 7.0, r: 0.6, h: 1.8 },
+    ];
+    cones.forEach(({ y, r, h }) => {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, 8), debFoliageMat);
+      cone.position.y = y;
+      cone.castShadow = true;
+      tree.add(cone);
+    });
+  }
+
+  return tree;
+}
+
+/**
+ * MAJOR DHAKA TRAFFIC LIGHT & INTERSECTION ("চৌরাস্তা ট্রাফিক সিগন্যাল ও পুলিশ বক্স")
+ * Features:
+ * - Overhead cantilever gantry with DMP Traffic Signboard and dual 3-aspect signal heads
+ * - Real-time illuminated RED/YELLOW/GREEN lamps with PointLight glow
+ * - Ground Zebra crossing pedestrian stripes and solid white stop lines
+ * - Perpendicular cross-street asphalt with curved curbs and street name posts
+ * - Traffic police pedestal with umbrella and animated police officer signaling traffic
+ */
+export interface TrafficLightRig {
+  root: THREE.Group;
+  redMeshes: THREE.Mesh[];
+  yellowMeshes: THREE.Mesh[];
+  greenMeshes: THREE.Mesh[];
+  pointLight: THREE.PointLight;
+  policeArmGroup: THREE.Group;
+  setSignal: (state: SignalColor) => void;
+}
+
+export function createTrafficIntersectionModel(
+  textures: ProceduralTexturePack,
+  crossingNameBn = 'গুলিস্তান মোড়'
+): { group: THREE.Group; lightRig: TrafficLightRig; crossRoadMesh: THREE.Group } {
+  const group = new THREE.Group();
+
+  // 1. Materials
+  const metalMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    roughness: 0.6,
+    metalness: 0.8,
+  });
+  const yellowStripeMat = new THREE.MeshStandardMaterial({
+    color: 0xfacc15,
+    roughness: 0.5,
+  });
+  const housingMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.8,
+  });
+  const asphaltCrossMat = new THREE.MeshStandardMaterial({
+    map: textures.asphalt,
+    roughness: 0.88,
+  });
+  const zebraMat = new THREE.MeshStandardMaterial({
+    map: textures.zebraCrossing,
+    roughness: 0.75,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+  });
+  const dmpSignMat = new THREE.MeshStandardMaterial({
+    map: textures.trafficSignDmp,
+    roughness: 0.35,
+    metalness: 0.2,
+  });
+
+  // Signal lamp materials (active vs inactive)
+  const redActiveMat = new THREE.MeshStandardMaterial({
+    color: 0xff1e1e,
+    emissive: 0xef4444,
+    emissiveIntensity: 3.0,
+    roughness: 0.1,
+  });
+  const redDimMat = new THREE.MeshStandardMaterial({
+    color: 0x3b0707,
+    roughness: 0.7,
+  });
+
+  const yellowActiveMat = new THREE.MeshStandardMaterial({
+    color: 0xfbbf24,
+    emissive: 0xf59e0b,
+    emissiveIntensity: 2.8,
+    roughness: 0.1,
+  });
+  const yellowDimMat = new THREE.MeshStandardMaterial({
+    color: 0x361a03,
+    roughness: 0.7,
+  });
+
+  const greenActiveMat = new THREE.MeshStandardMaterial({
+    color: 0x34d399,
+    emissive: 0x10b981,
+    emissiveIntensity: 3.0,
+    roughness: 0.1,
+  });
+  const greenDimMat = new THREE.MeshStandardMaterial({
+    color: 0x042f1a,
+    roughness: 0.7,
+  });
+
+  // 2. Perpendicular Cross-Street Asphalt ("আড়াআড়ি রাস্তা")
+  const crossRoadMesh = new THREE.Group();
+  const crossAsphalt = new THREE.Mesh(new THREE.PlaneGeometry(56, 12), asphaltCrossMat);
+  crossAsphalt.rotation.x = -Math.PI / 2;
+  crossAsphalt.rotation.z = Math.PI / 2;
+  crossAsphalt.position.set(0, 0.015, 0);
+  crossAsphalt.receiveShadow = true;
+  crossRoadMesh.add(crossAsphalt);
+
+  // Cross street boundary curbs
+  [-6.0, 6.0].forEach((cz) => {
+    // West cross curb
+    const curbW = new THREE.Mesh(new THREE.BoxGeometry(18, 0.28, 0.45), yellowStripeMat);
+    curbW.position.set(-18, 0.14, cz);
+    crossRoadMesh.add(curbW);
+
+    // East cross curb
+    const curbE = new THREE.Mesh(new THREE.BoxGeometry(18, 0.28, 0.45), yellowStripeMat);
+    curbE.position.set(18, 0.14, cz);
+    crossRoadMesh.add(curbE);
+  });
+
+  // Corner street name boards ("রাস্তার মোড় নেমপ্লেট")
+  [[-9.2, -6.6], [9.2, -6.6], [-9.2, 6.6], [9.2, 6.6]].forEach(([px, pz]) => {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3.2, 8), metalMat);
+    post.position.set(px, 1.6, pz);
+    crossRoadMesh.add(post);
+
+    const signBoard = new THREE.Mesh(
+      new THREE.BoxGeometry(1.4, 0.45, 0.06),
+      new THREE.MeshStandardMaterial({ color: 0x0369a1, roughness: 0.4 })
+    );
+    signBoard.position.set(px, 3.0, pz);
+    signBoard.rotation.y = px < 0 ? Math.PI / 2 : -Math.PI / 2;
+    crossRoadMesh.add(signBoard);
+  });
+  group.add(crossRoadMesh);
+
+  // 3. Ground Zebra Crossings with White Stop Lines (Placed on main road before & after crossing)
+  [-6.2, 6.2].forEach((zz) => {
+    const zebra = new THREE.Mesh(new THREE.PlaneGeometry(16.4, 4.6), zebraMat);
+    zebra.rotation.x = -Math.PI / 2;
+    zebra.position.set(0, 0.025, zz);
+    zebra.receiveShadow = true;
+    group.add(zebra);
+  });
+
+  // 4. Overhead Cantilever Traffic Signal Gantry Structure
+  const gantryGroup = new THREE.Group();
+  gantryGroup.position.set(0, 0, 7.2); // Positioned facing the player's approach
+
+  // Heavy steel upright column on right sidewalk curb
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.32, 7.4, 12), metalMat);
+  pole.position.set(8.8, 3.7, 0);
+  pole.castShadow = true;
+  gantryGroup.add(pole);
+
+  // Base decorative flange with reflective stripes
+  const poleBase = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.52, 0.8, 12), yellowStripeMat);
+  poleBase.position.set(8.8, 0.4, 0);
+  gantryGroup.add(poleBase);
+
+  // Horizontal cantilever truss spanning across road
+  const trussMain = new THREE.Mesh(new THREE.BoxGeometry(18.2, 0.32, 0.32), metalMat);
+  trussMain.position.set(0, 6.7, 0);
+  gantryGroup.add(trussMain);
+
+  const trussUpper = new THREE.Mesh(new THREE.BoxGeometry(18.2, 0.22, 0.22), metalMat);
+  trussUpper.position.set(0, 7.3, 0);
+  gantryGroup.add(trussUpper);
+
+  // Diagonal support bracket
+  const bracket = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 8), metalMat);
+  bracket.position.set(7.5, 5.7, 0);
+  bracket.rotation.z = Math.PI / 4.2;
+  gantryGroup.add(bracket);
+
+  // Overhead DMP Police Signboard in center
+  const dmpSign = new THREE.Mesh(new THREE.BoxGeometry(4.8, 1.45, 0.08), dmpSignMat);
+  dmpSign.position.set(0, 5.9, 0);
+  dmpSign.castShadow = true;
+  gantryGroup.add(dmpSign);
+
+  // 5. Dual 3-Aspect Traffic Signal Heads (Left lane & Right lane)
+  const redMeshes: THREE.Mesh[] = [];
+  const yellowMeshes: THREE.Mesh[] = [];
+  const greenMeshes: THREE.Mesh[] = [];
+
+  const buildSignalHead = (xPos: number, yPos: number, zPos: number) => {
+    const head = new THREE.Group();
+    head.position.set(xPos, yPos, zPos);
+
+    // Outer dark housing
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.72, 1.95, 0.42), housingMat);
+    box.castShadow = true;
+    head.add(box);
+
+    // Yellow side border backplate
+    const backplate = new THREE.Mesh(new THREE.BoxGeometry(0.92, 2.15, 0.04), yellowStripeMat);
+    backplate.position.z = -0.16;
+    head.add(backplate);
+
+    // Top: Red Lamp
+    const redLens = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), redActiveMat);
+    redLens.position.set(0, 0.62, 0.18);
+    redLens.rotation.x = Math.PI / 2;
+    head.add(redLens);
+    redMeshes.push(redLens);
+
+    // Middle: Yellow Lamp
+    const yellowLens = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), yellowDimMat);
+    yellowLens.position.set(0, 0, 0.18);
+    yellowLens.rotation.x = Math.PI / 2;
+    head.add(yellowLens);
+    yellowMeshes.push(yellowLens);
+
+    // Bottom: Green Lamp
+    const greenLens = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), greenDimMat);
+    greenLens.position.set(0, -0.62, 0.18);
+    greenLens.rotation.x = Math.PI / 2;
+    head.add(greenLens);
+    greenMeshes.push(greenLens);
+
+    // Protective hoods / sun visors over each lens
+    [0.62, 0, -0.62].forEach((ly) => {
+      const visor = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.24, 0.24, 0.22, 10, 1, true, 0, Math.PI),
+        housingMat
+      );
+      visor.position.set(0, ly + 0.1, 0.26);
+      visor.rotation.x = -Math.PI / 2;
+      visor.rotation.z = Math.PI;
+      head.add(visor);
+    });
+
+    return head;
+  };
+
+  // Overhead signals at left and right lanes
+  gantryGroup.add(buildSignalHead(-3.8, 5.6, 0.22));
+  gantryGroup.add(buildSignalHead(3.8, 5.6, 0.22));
+
+  // Curbside secondary signal post on left sidewalk
+  const curbSignalHead = buildSignalHead(-8.6, 3.4, 0.1);
+  const curbPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 3.8, 8), metalMat);
+  curbPole.position.set(-8.6, 1.9, 0.1);
+  gantryGroup.add(curbPole);
+  gantryGroup.add(curbSignalHead);
+
+  // Dynamic PointLight casting glow onto the road
+  const pointLight = new THREE.PointLight(0xef4444, 2.6, 26, 1.2);
+  pointLight.position.set(0, 5.4, 1.5);
+  gantryGroup.add(pointLight);
+
+  group.add(gantryGroup);
+
+  // 6. Traffic Police Raised Island & Sergeant ("পুলিশ বক্স ও ট্রাফিক পুলিশ")
+  const policeIsland = new THREE.Group();
+  policeIsland.position.set(-9.2, 0, 4.6);
+
+  // Raised round concrete pedestal with yellow-black striped curb
+  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.7, 0.45, 16), yellowStripeMat);
+  pedestal.position.y = 0.225;
+  pedestal.receiveShadow = true;
+  policeIsland.add(pedestal);
+
+  const pedestalTop = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.5, 1.5, 0.46, 16),
+    new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.85 })
+  );
+  pedestalTop.position.y = 0.23;
+  policeIsland.add(pedestalTop);
+
+  // Large Dhaka Traffic Police Umbrella ("ট্রাফিক ছাতা")
+  const umbrellaPole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 3.5, 8), metalMat);
+  umbrellaPole.position.set(0, 1.75, 0);
+  policeIsland.add(umbrellaPole);
+
+  const umbrellaCanopy = new THREE.Mesh(
+    new THREE.ConeGeometry(1.9, 0.7, 10),
+    new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.5, side: THREE.DoubleSide })
+  );
+  umbrellaCanopy.position.set(0, 3.45, 0);
+  umbrellaCanopy.castShadow = true;
+  policeIsland.add(umbrellaCanopy);
+
+  // Traffic Police Constable Rig
+  const officerGroup = new THREE.Group();
+  officerGroup.position.set(0, 0.46, 0.25);
+
+  const uniformShirtMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.7 });
+  const uniformPantsMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.7 });
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0x935c34, roughness: 0.8 });
+  const policeCapMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.6 });
+
+  // Legs
+  [-0.14, 0.14].forEach((lx) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.075, 0.95, 8), uniformPantsMat);
+    leg.position.set(lx, 0.48, 0);
+    leg.castShadow = true;
+    officerGroup.add(leg);
+  });
+
+  // Torso with Dhaka police uniform
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.65, 0.26), uniformShirtMat);
+  torso.position.set(0, 1.25, 0);
+  torso.castShadow = true;
+  officerGroup.add(torso);
+
+  // Police badge & belt
+  const belt = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.08, 0.28), housingMat);
+  belt.position.set(0, 0.96, 0);
+  officerGroup.add(belt);
+
+  // Head and Cap
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), skinMat);
+  head.position.set(0, 1.68, 0);
+  officerGroup.add(head);
+
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.15, 0.08, 10), policeCapMat);
+  cap.position.set(0, 1.76, 0);
+  officerGroup.add(cap);
+
+  const visorCap = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 0.1), housingMat);
+  visorCap.position.set(0, 1.74, 0.14);
+  officerGroup.add(visorCap);
+
+  // Signaling Arm Group (pivots dynamically on red/green!)
+  const policeArmGroup = new THREE.Group();
+  policeArmGroup.position.set(0.26, 1.48, 0);
+
+  const armMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.6, 8), uniformShirtMat);
+  armMesh.position.set(0.18, -0.22, 0);
+  armMesh.rotation.z = -Math.PI / 4;
+  policeArmGroup.add(armMesh);
+
+  // White traffic control glove
+  const glove = new THREE.Mesh(
+    new THREE.BoxGeometry(0.12, 0.18, 0.08),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 })
+  );
+  glove.position.set(0.38, -0.4, 0);
+  policeArmGroup.add(glove);
+
+  officerGroup.add(policeArmGroup);
+  policeIsland.add(officerGroup);
+  group.add(policeIsland);
+
+  // 7. Rig Control Method
+  const lightRig: TrafficLightRig = {
+    root: group,
+    redMeshes,
+    yellowMeshes,
+    greenMeshes,
+    pointLight,
+    policeArmGroup,
+    setSignal: (state: 'RED' | 'YELLOW' | 'GREEN') => {
+      if (state === 'RED') {
+        redMeshes.forEach((m) => (m.material = redActiveMat));
+        yellowMeshes.forEach((m) => (m.material = yellowDimMat));
+        greenMeshes.forEach((m) => (m.material = greenDimMat));
+        pointLight.color.setHex(0xef4444);
+        pointLight.intensity = 2.8;
+        // Raise arm high in firm "STOP" gesture
+        policeArmGroup.rotation.z = -1.15;
+      } else if (state === 'YELLOW') {
+        redMeshes.forEach((m) => (m.material = redDimMat));
+        yellowMeshes.forEach((m) => (m.material = yellowActiveMat));
+        greenMeshes.forEach((m) => (m.material = greenDimMat));
+        pointLight.color.setHex(0xf59e0b);
+        pointLight.intensity = 2.2;
+        policeArmGroup.rotation.z = -0.55;
+      } else {
+        // GREEN
+        redMeshes.forEach((m) => (m.material = redDimMat));
+        yellowMeshes.forEach((m) => (m.material = yellowDimMat));
+        greenMeshes.forEach((m) => (m.material = greenActiveMat));
+        pointLight.color.setHex(0x10b981);
+        pointLight.intensity = 2.6;
+        // Lower arm in "GO FORWARD" wave gesture
+        policeArmGroup.rotation.z = 0.25;
+      }
+    },
+  };
+
+  // Initialize in RED state
+  lightRig.setSignal('RED');
+
+  return { group, lightRig, crossRoadMesh };
 }

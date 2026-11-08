@@ -9,7 +9,10 @@ import {
   HudSnapshot,
   InputState,
   ScreenPopup,
+  SignalColor,
   TimeOfDay,
+  TrafficLightState,
+  TrafficSignalHudInfo,
 } from '../types/game';
 import {
   createCngModel,
@@ -26,12 +29,15 @@ import {
   createRoadsideBlock,
   createShobjiStallModel,
   createStallModel,
+  createTrafficIntersectionModel,
   createTrafficRickshawModel,
   createTrashPileModel,
+  createTreeModel,
   DriverRig,
   MobRig,
   PedestrianRig,
   RickshawRig,
+  TrafficLightRig,
 } from './models';
 import { createProceduralTextures, ProceduralTexturePack } from './textures';
 
@@ -61,11 +67,37 @@ interface StallInstance {
   localZOffset: number;
 }
 
+const CROSSING_NAMES = [
+  'গুলিস্তান জিরো পয়েন্ট মোড়',
+  'ফার্মগেট চৌরাস্তা ক্রসিং',
+  'শাহবাগ চত্বর ইন্টারসেকশন',
+  'বাংলাবাজার মোড় ক্রসিং',
+  'সায়দাবাদ ট্রাফিক জংশন',
+  'মৌচাক ক্রসিং মোড়',
+];
+
+interface IntersectionInstance {
+  id: number;
+  segmentIndex: number;
+  crossingNameBn: string;
+  group: THREE.Group;
+  lightRig: TrafficLightRig;
+  state: SignalColor;
+  timer: number;
+  playerViolated: boolean;
+  playerRewarded: boolean;
+  crossVehicle: THREE.Group;
+  crossVehicleActive: boolean;
+  crossVehicleX: number;
+  crossVehicleSpeed: number;
+}
+
 interface RoadSegment {
   group: THREE.Group;
   zCenter: number;
   stalls: StallInstance[];
   lampBulbs: THREE.Mesh[];
+  intersection?: IntersectionInstance;
 }
 
 interface TrafficVehicle {
@@ -73,11 +105,13 @@ interface TrafficVehicle {
   vehicleType: 'bus' | 'cng' | 'rickshaw';
   isBus: boolean;
   laneX: number;
-  speed: number;
+  baseSpeed: number;
+  currentSpeed: number;
   direction: -1 | 1;
   nearMissAwarded: boolean;
   hitCooldown: number;
   hornCooldown: number;
+  stoppedAtLight: boolean;
 }
 
 interface StreetPickup {
@@ -135,6 +169,8 @@ export class DhakaGameEngine {
   private pedestrians: PedestrianRig[] = [];
   private pickups: StreetPickup[] = [];
   private mobs: ActiveMob[] = [];
+  private intersections: IntersectionInstance[] = [];
+  private activeCrossingHudInfo?: TrafficSignalHudInfo;
 
   // Instanced debris system (Zero GC)
   private debrisInstanced!: THREE.InstancedMesh;
@@ -370,12 +406,30 @@ export class DhakaGameEngine {
         if (side === 1 && i % 4 === 0) {
           const mosque = createMosqueModel(this.textures);
           mosque.position.set(side * 15.6, 0, 0);
-          mosque.rotation.y = -Math.PI / 2;
+          mosque.rotation.y = side === 1 ? 0 : Math.PI; // SHOZA KORA: Front facade & minarets face directly towards the road!
           segGroup.add(mosque);
+
+          // Plant trees in the open courtyards flanking the mosque
+          const treeNorth = createTreeModel((i + 0) % 4, this.textures);
+          treeNorth.position.set(side * 14.0, 0, -9.2);
+          segGroup.add(treeNorth);
+
+          const treeSouth = createTreeModel((i + 1) % 4, this.textures);
+          treeSouth.position.set(side * 14.0, 0, 9.2);
+          segGroup.add(treeSouth);
         } else if (side === -1 && i % 3 === 1) {
           // 2. Old Historical Red Brick Heritage Building (Shankhari Bazar / Ruplal House style)
           const heritage = createHeritageBuildingModel(side, i, this.textures);
           segGroup.add(heritage);
+
+          // Plant trees in the open gaps flanking heritage building
+          const treeNorth = createTreeModel((i + 2) % 4, this.textures);
+          treeNorth.position.set(side * 14.0, 0, -9.2);
+          segGroup.add(treeNorth);
+
+          const treeSouth = createTreeModel((i + 3) % 4, this.textures);
+          treeSouth.position.set(side * 14.0, 0, 9.2);
+          segGroup.add(treeSouth);
         } else {
           // 3. Dense commercial roadside blocks with posters & billboards
           const blockA = createRoadsideBlock(side, i * 2 + (side > 0 ? 1 : 0), this.textures);
@@ -387,6 +441,17 @@ export class DhakaGameEngine {
           blockB.group.position.z = 6.5;
           segGroup.add(blockB.group);
           lampBulbs.push(blockB.lampBulb);
+
+          // BUILDING ER FAKA JAIGAI GAS LAGA (Plant authentic trees in gaps between buildings):
+          // A. Center gap between blockA and blockB (at Z = 0)
+          const treeCenter = createTreeModel((i * 2 + (side > 0 ? 0 : 1)) % 4, this.textures);
+          treeCenter.position.set(side * 13.8, 0, 0);
+          segGroup.add(treeCenter);
+
+          // B. Outer gap at segment seam boundaries (at Z = ±12.8)
+          const treeBoundary = createTreeModel((i * 2 + (side > 0 ? 2 : 3)) % 4, this.textures);
+          treeBoundary.position.set(side * 13.8, 0, i % 2 === 0 ? -12.8 : 12.8);
+          segGroup.add(treeBoundary);
         }
       });
 
@@ -417,9 +482,49 @@ export class DhakaGameEngine {
       const wireGeo = new THREE.BufferGeometry().setFromPoints(wireCurve.getPoints(10));
       segGroup.add(new THREE.Line(wireGeo, wireMat));
 
-      // DENSE PURANA DHAKA STREET LIFE: 4 Stalls per side (8 stalls/vendors per segment - NO EMPTY SPACES!)
+      // MAJOR DHAKA TRAFFIC LIGHT INTERSECTION ("চৌরাস্তা মোড় ও ট্রাফিক সিগন্যাল")
+      // Placed on segments where i % 4 === 2 (every 112m)
+      const isIntersection = i % 4 === 2;
+      let intersectionInst: IntersectionInstance | undefined;
+      if (isIntersection) {
+        const crossingName = CROSSING_NAMES[Math.floor(i / 2) % CROSSING_NAMES.length];
+        const interModel = createTrafficIntersectionModel(this.textures, crossingName);
+        interModel.group.position.set(0, 0, 0);
+        segGroup.add(interModel.group);
+
+        // Cross-traffic vehicle (Bus or CNG traversing perpendicularly during RED)
+        const crossVeh =
+          i % 2 === 0
+            ? createDhakaBusModel(this.textures)
+            : createCngModel(this.textures);
+        crossVeh.position.set(-30, 0, 0);
+        crossVeh.rotation.y = -Math.PI / 2; // facing across road along +X
+        crossVeh.visible = false;
+        segGroup.add(crossVeh);
+
+        intersectionInst = {
+          id: i,
+          segmentIndex: i,
+          crossingNameBn: crossingName,
+          group: segGroup,
+          lightRig: interModel.lightRig,
+          state: (i % 2 === 0 ? 'RED' : 'GREEN') as SignalColor,
+          timer: 6.0 + (i % 3) * 2.5,
+          playerViolated: false,
+          playerRewarded: false,
+          crossVehicle: crossVeh,
+          crossVehicleActive: false,
+          crossVehicleX: -32,
+          crossVehicleSpeed: 15.5,
+        };
+        intersectionInst.lightRig.setSignal(intersectionInst.state);
+        this.intersections.push(intersectionInst);
+      }
+
+      // DENSE PURANA DHAKA STREET LIFE: Stalls & vendors
+      // At intersections, we leave the perpendicular cross street clear (skip |zOff| < 5)
       const stalls: StallInstance[] = [];
-      const zOffsets = [-10.2, -3.6, 3.6, 10.2];
+      const zOffsets = isIntersection ? [-10.5, 10.5] : [-10.2, -3.6, 3.6, 10.2];
 
       ([-1, 1] as const).forEach((side) => {
         zOffsets.forEach((zOff, sIdx) => {
@@ -450,6 +555,7 @@ export class DhakaGameEngine {
         zCenter,
         stalls,
         lampBulbs,
+        intersection: intersectionInst,
       });
     }
 
@@ -492,11 +598,13 @@ export class DhakaGameEngine {
         vehicleType: cfg.type,
         isBus: cfg.isBus,
         laneX: cfg.laneX,
-        speed: cfg.speed,
+        baseSpeed: cfg.speed,
+        currentSpeed: cfg.speed,
         direction: cfg.dir,
         nearMissAwarded: false,
         hitCooldown: 0,
         hornCooldown: 1.0 + Math.random() * 4.0,
+        stoppedAtLight: false,
       });
     }
 
@@ -632,6 +740,12 @@ export class DhakaGameEngine {
   public startGame(): void {
     soundEngine.init();
     soundEngine.playGameStartVoice();
+    soundEngine.startAmbience();
+    window.setTimeout(() => {
+      if (this.phase === GamePhase.PLAYING) {
+        soundEngine.playDipjolVoice();
+      }
+    }, 1800);
     this.resetWorldForRun();
     this.phase = GamePhase.PLAYING;
     this.callbacks.onPhaseChange(GamePhase.PLAYING);
@@ -650,6 +764,7 @@ export class DhakaGameEngine {
   }
 
   public returnToMenu(): void {
+    soundEngine.stopAmbience();
     this.resetWorldForRun();
     this.phase = GamePhase.MENU;
     this.callbacks.onPhaseChange(GamePhase.MENU);
@@ -699,9 +814,20 @@ export class DhakaGameEngine {
     for (let i = 0; i < this.traffic.length; i++) {
       const tr = this.traffic[i];
       tr.mesh.position.set(tr.laneX, 0, -25 - i * 35);
+      tr.currentSpeed = tr.baseSpeed;
       tr.nearMissAwarded = false;
       tr.hitCooldown = 0;
+      tr.stoppedAtLight = false;
     }
+
+    for (const inter of this.intersections) {
+      inter.playerViolated = false;
+      inter.playerRewarded = false;
+      inter.crossVehicleActive = false;
+      inter.crossVehicle.visible = false;
+      inter.crossVehicleX = -32;
+    }
+    this.activeCrossingHudInfo = undefined;
 
     for (let i = 0; i < this.pickups.length; i++) {
       const p = this.pickups[i];
@@ -760,6 +886,7 @@ export class DhakaGameEngine {
     }
 
     if (stunnedCount > 0) {
+      soundEngine.playDipjolVoice();
       const bonus = stunnedCount * 1500;
       this.addMoney(bonus);
       this.emitPopup(
@@ -999,14 +1126,16 @@ export class DhakaGameEngine {
   };
 
   private updateMenuShowcase(dt: number, elapsed: number): void {
-    this.menuOrbitAngle += dt * 0.35;
-    const radius = 5.4;
-    this.camera.position.set(
-      Math.sin(this.menuOrbitAngle) * radius,
-      2.35 + Math.sin(elapsed * 0.9) * 0.18,
-      Math.cos(this.menuOrbitAngle) * radius
-    );
-    this.camera.lookAt(0, 1.18, 0.1);
+    // Elegant front-facing showcase camera swing: smoothly sways between left and right front angles
+    // directly showcasing Obaidul Quader's face, sunglasses, white panjabi, and decorated rickshaw
+    const swing = Math.sin(elapsed * 0.42) * 0.65;
+    const radius = 4.1;
+    const camX = Math.sin(swing) * radius;
+    const camZ = -Math.cos(swing) * radius - 0.35; // Positioned in front (-Z)
+    const camY = 1.9 + Math.sin(elapsed * 0.75) * 0.12;
+
+    this.camera.position.set(camX, camY, camZ);
+    this.camera.lookAt(0, 1.25, -0.2);
 
     if (this.bellJiggleTimer > 0) {
       this.bellJiggleTimer = Math.max(0, this.bellJiggleTimer - dt);
@@ -1084,6 +1213,9 @@ export class DhakaGameEngine {
     this.rickshaw.root.rotation.y = this.yaw;
 
     this.distanceMeters += Math.abs(moveStep);
+    if (this.distanceMeters > 75 && this.speed > 8) {
+      soundEngine.playDrivingMilonVoice();
+    }
 
     // Wall / Curb Collision
     if (Math.abs(this.rickshaw.root.position.x) > ROAD_HALF_LIMIT) {
@@ -1126,6 +1258,7 @@ export class DhakaGameEngine {
     }
 
     this.recycleRoadSegments();
+    this.updateIntersections(dt);
     this.checkStallCollisions();
     this.updatePickups(dt, elapsed);
     this.updateTraffic(dt, true);
@@ -1142,6 +1275,124 @@ export class DhakaGameEngine {
     }
   }
 
+  private updateIntersections(dt: number): void {
+    const rx = this.rickshaw.root.position.x;
+    const rz = this.rickshaw.root.position.z;
+
+    let closestUpcomingDist = Infinity;
+    let activeHudInfo: TrafficSignalHudInfo | undefined;
+
+    for (const inter of this.intersections) {
+      // 1. Advance state timer
+      inter.timer -= dt;
+      if (inter.timer <= 0) {
+        if (inter.state === 'RED') {
+          inter.state = 'GREEN';
+          inter.timer = 8.5;
+        } else if (inter.state === 'GREEN') {
+          inter.state = 'YELLOW';
+          inter.timer = 2.5;
+        } else {
+          inter.state = 'RED';
+          inter.timer = 8.0;
+          inter.playerViolated = false;
+          inter.playerRewarded = false;
+        }
+        inter.lightRig.setSignal(inter.state);
+      }
+
+      // 2. Cross-Traffic Vehicle during RED
+      const interZ = inter.group.position.z;
+      if (inter.state === 'RED') {
+        inter.crossVehicleActive = true;
+        inter.crossVehicle.visible = true;
+        inter.crossVehicleX += inter.crossVehicleSpeed * dt;
+        inter.crossVehicle.position.x = inter.crossVehicleX;
+
+        if (inter.crossVehicleX > 32) {
+          inter.crossVehicleX = -32;
+          inter.crossVehicleSpeed = 14 + Math.random() * 5.0;
+        }
+
+        // Check collision between player and crossing vehicle
+        const cdx = rx - inter.crossVehicleX;
+        const cdz = rz - interZ;
+        if (cdx * cdx + cdz * cdz < 14.5 && this.phase === GamePhase.PLAYING) {
+          this.speed = -8.0;
+          this.applyDamage(22);
+          this.cameraShake = Math.max(this.cameraShake, 0.65);
+          this.spawnDebrisBurst(rx, 0.8, rz, 14);
+          soundEngine.playHit();
+          soundEngine.playCrashVoice();
+          this.emitPopup(
+            'ক্রস-ট্রাফিক বাসের সাথে সংঘর্ষ!',
+            'লাল বাতিতে পার হতে গিয়ে ধাক্কা!',
+            'warning'
+          );
+        }
+      } else {
+        inter.crossVehicleActive = false;
+        inter.crossVehicle.visible = false;
+        inter.crossVehicleX = -32;
+      }
+
+      // 3. Player Traffic Signal Rules
+      const stopLineZ = interZ + 6.0;
+      const distToStop = rz - stopLineZ; // positive if player is approaching from positive Z
+
+      // Determine if this is the closest upcoming intersection ahead of player
+      if (distToStop > -10 && distToStop < 55) {
+        if (distToStop < closestUpcomingDist) {
+          closestUpcomingDist = distToStop;
+          activeHudInfo = {
+            state: inter.state,
+            secondsRemaining: Math.max(1, Math.ceil(inter.timer)),
+            distanceToStopLine: Math.max(0, Math.round(distToStop)),
+            crossingNameBn: inter.crossingNameBn,
+          };
+        }
+      }
+
+      // Stop Line Obedience Reward:
+      // If RED and player has braked and stopped before stop line (dist in [0.5, 14], |speed| < 1.5)
+      if (inter.state === 'RED' && distToStop >= 0.5 && distToStop <= 14) {
+        if (Math.abs(this.speed) < 1.5 && !inter.playerRewarded) {
+          if (inter.timer <= 0.8) {
+            inter.playerRewarded = true;
+            this.addMoney(1500);
+            this.wantedLevel = Math.max(0, this.wantedLevel - 1);
+            soundEngine.playTrafficComplianceChime();
+            this.emitPopup(
+              '🏆 ট্রাফিক নিয়ম মানার পুরস্কার! +৳১,৫০০',
+              'সিগন্যালে দাঁড়ানোয় জ্যাম কমেছে!',
+              'cash'
+            );
+          }
+        }
+      }
+
+      // Red Light Running Violation:
+      // If player crosses the stop line (distToStop < 0 and > -9) while light is RED at speed
+      if (inter.state === 'RED' && distToStop < 0 && distToStop > -9) {
+        if (this.speed > 3.2 && !inter.playerViolated) {
+          inter.playerViolated = true;
+          soundEngine.playTrafficWhistle();
+          this.wantedLevel = Math.min(5, this.wantedLevel + 1);
+          const fine = Math.min(this.money, 1000);
+          this.money -= fine;
+          this.emitPopup(
+            '🚨 সিগন্যাল অমান্য! ট্রাফিক পুলিশের মামলা!',
+            '-৳১,০০০ জরিমানা | ওয়ান্টেড লেভেল +১!',
+            'warning'
+          );
+          soundEngine.playCrashVoice();
+        }
+      }
+    }
+
+    this.activeCrossingHudInfo = activeHudInfo;
+  }
+
   private recycleRoadSegments(): void {
     const playerZ = this.rickshaw.root.position.z;
     for (const seg of this.segments) {
@@ -1150,10 +1401,24 @@ export class DhakaGameEngine {
         seg.zCenter -= NUM_SEGMENTS * SEGMENT_LENGTH;
         seg.group.position.z = seg.zCenter;
         this.respawnSegmentStalls(seg);
+        if (seg.intersection) {
+          seg.intersection.playerViolated = false;
+          seg.intersection.playerRewarded = false;
+          seg.intersection.crossVehicleActive = false;
+          seg.intersection.crossVehicle.visible = false;
+          seg.intersection.crossVehicleX = -32;
+        }
       } else if (dz < -HALF_SPAN) {
         seg.zCenter += NUM_SEGMENTS * SEGMENT_LENGTH;
         seg.group.position.z = seg.zCenter;
         this.respawnSegmentStalls(seg);
+        if (seg.intersection) {
+          seg.intersection.playerViolated = false;
+          seg.intersection.playerRewarded = false;
+          seg.intersection.crossVehicleActive = false;
+          seg.intersection.crossVehicle.visible = false;
+          seg.intersection.crossVehicleX = -32;
+        }
       }
     }
   }
@@ -1263,15 +1528,76 @@ export class DhakaGameEngine {
     const rz = this.rickshaw.root.position.z;
 
     for (const tr of this.traffic) {
-      tr.mesh.position.z += tr.direction * tr.speed * dt;
+      let targetSpeed = tr.baseSpeed;
+      let shouldStop = false;
+
+      // 1. Check intersections for RED or YELLOW signals
+      for (const inter of this.intersections) {
+        if (inter.state === 'RED' || inter.state === 'YELLOW') {
+          const interZ = inter.group.position.z;
+          if (tr.direction === -1) {
+            // Moving towards -Z (same direction as player)
+            const stopLineZ = interZ + 6.0;
+            const dist = tr.mesh.position.z - stopLineZ;
+            if (dist > 0.4 && dist < 24) {
+              shouldStop = true;
+              break;
+            }
+          } else {
+            // Moving towards +Z (oncoming traffic)
+            const stopLineZ = interZ - 6.0;
+            const dist = stopLineZ - tr.mesh.position.z;
+            if (dist > 0.4 && dist < 24) {
+              shouldStop = true;
+              break;
+            }
+          }
+        }
+      }
+
+      // 2. Queueing behind vehicle ahead in same lane
+      if (!shouldStop) {
+        for (const other of this.traffic) {
+          if (other === tr) continue;
+          if (other.direction === tr.direction && Math.abs(other.laneX - tr.laneX) < 1.4) {
+            const relDist = (other.mesh.position.z - tr.mesh.position.z) * tr.direction;
+            if (relDist > 1.2 && relDist < 6.8 && other.currentSpeed < 3.0) {
+              shouldStop = true;
+              break;
+            }
+          }
+        }
+      }
+
+      tr.stoppedAtLight = shouldStop;
+      if (shouldStop) {
+        targetSpeed = 0;
+      }
+
+      // Smooth deceleration / acceleration
+      if (tr.currentSpeed > targetSpeed) {
+        tr.currentSpeed = Math.max(targetSpeed, tr.currentSpeed - 14.0 * dt);
+      } else if (tr.currentSpeed < targetSpeed) {
+        tr.currentSpeed = Math.min(targetSpeed, tr.currentSpeed + 5.5 * dt);
+      }
+
+      tr.mesh.position.z += tr.direction * tr.currentSpeed * dt;
       if (tr.hitCooldown > 0) tr.hitCooldown = Math.max(0, tr.hitCooldown - dt);
 
-      // Horn or Rickshaw Bell when approaching
+      // Horn or Rickshaw Bell when approaching or when impatient in traffic jam
       if (tr.hornCooldown > 0) {
         tr.hornCooldown -= dt;
       } else {
         const distZ = Math.abs(tr.mesh.position.z - rz);
-        if (distZ < 25 && distZ > 6) {
+        if (tr.stoppedAtLight && tr.currentSpeed < 0.5 && distZ < 35) {
+          // Impatient Dhaka traffic jam honking!
+          if (tr.vehicleType === 'rickshaw') {
+            soundEngine.playBell();
+          } else {
+            soundEngine.playTrafficHorn(tr.isBus);
+          }
+          tr.hornCooldown = 2.8 + Math.random() * 4.5;
+        } else if (distZ < 25 && distZ > 6) {
           if (tr.vehicleType === 'rickshaw') {
             soundEngine.playBell();
           } else {
@@ -1423,6 +1749,10 @@ export class DhakaGameEngine {
       m.rig.armL.rotation.x = -Math.sin(stride) * 0.55;
       m.rig.armR.rotation.x = Math.sin(stride * 1.2) * 0.55;
 
+      if (dist < 4.8 && this.phase === GamePhase.PLAYING) {
+        soundEngine.playDangerDewVoice();
+      }
+
       if (dist < 1.95 && this.turboTimer <= 0) {
         this.applyDamage(20 * dt);
         this.cameraShake = Math.max(this.cameraShake, 0.14);
@@ -1430,6 +1760,7 @@ export class DhakaGameEngine {
         m.knockVelX = -_v1.x * 15;
         m.knockVelZ = -_v1.z * 15;
         m.stunTimer = 1.3;
+        soundEngine.playDipjolVoice();
       }
     }
   }
@@ -1515,6 +1846,17 @@ export class DhakaGameEngine {
       _camLookTarget.set(rx - sinY * 14, ry + 1.35, rz - cosY * 14);
       this.camera.position.lerp(_camDesired, 1 - Math.exp(-18 * dt));
       this.currentLookAt.lerp(_camLookTarget, 1 - Math.exp(-18 * dt));
+    } else if (this.cameraMode === CameraMode.FRONT) {
+      // Front selfie angle: placed in front of handlebars, looking directly back at Quader's face & steering
+      const distFront = 3.4;
+      _camDesired.set(
+        rx - sinY * distFront - this.steerAngle * 0.6,
+        ry + 1.82,
+        rz - cosY * distFront
+      );
+      _camLookTarget.set(rx, ry + 1.25, rz);
+      this.camera.position.lerp(_camDesired, 1 - Math.exp(-14 * dt));
+      this.currentLookAt.lerp(_camLookTarget, 1 - Math.exp(-16 * dt));
     } else {
       const distBack = this.cameraMode === CameraMode.ACTION ? 5.2 : 7.4;
       const heightUp = this.cameraMode === CameraMode.ACTION ? 2.45 : 3.55;
@@ -1565,6 +1907,7 @@ export class DhakaGameEngine {
       turboRemainingRatio: this.turboTimer / TURBO_DURATION_SEC,
       activeMobCount: this.mobs.length,
       trafficCount: this.traffic.length,
+      trafficSignal: this.activeCrossingHudInfo,
     });
   }
 

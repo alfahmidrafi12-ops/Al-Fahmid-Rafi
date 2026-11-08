@@ -7,11 +7,13 @@ import {
   Gamepad2,
   Moon,
   Pause,
+  Radio,
   Sun,
   Sunset,
   Volume2,
   VolumeX,
 } from 'lucide-react';
+import { soundEngine } from '../audio/soundEngine';
 import {
   CameraMode,
   DRIVER_PROFILES,
@@ -53,6 +55,14 @@ export const GameHud: React.FC<GameHudProps> = ({
 }) => {
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [touchPadEnabled, setTouchPadEnabled] = useState(false);
+  const [radioStation, setRadioStation] = useState<'FM_98_4' | 'FOLK' | 'OFF'>(
+    soundEngine.getRadioStation()
+  );
+
+  const handleToggleRadio = () => {
+    const next = soundEngine.toggleRadio();
+    setRadioStation(next);
+  };
 
   useEffect(() => {
     const isCoarse =
@@ -177,6 +187,61 @@ export const GameHud: React.FC<GameHudProps> = ({
             </div>
           )}
         </div>
+
+        {/* Center: Major Traffic Signal Alert Widget */}
+        {hud.trafficSignal && hud.trafficSignal.state !== 'NONE' && (
+          <div className="pointer-events-auto flex flex-col items-center rounded-2xl border border-white/20 bg-zinc-950/95 px-3.5 py-2 shadow-2xl backdrop-blur-md">
+            <div className="flex items-center gap-2.5">
+              {/* 3-light compact signal housing */}
+              <div className="flex items-center gap-1.5 rounded-full bg-zinc-900 border border-white/15 px-2 py-1 shadow-inner">
+                <span
+                  className={`h-3 w-3 rounded-full transition-all duration-200 ${
+                    hud.trafficSignal.state === 'RED'
+                      ? 'bg-rose-500 shadow-md shadow-rose-500 ring-2 ring-rose-400 animate-pulse'
+                      : 'bg-rose-950/60'
+                  }`}
+                />
+                <span
+                  className={`h-3 w-3 rounded-full transition-all duration-200 ${
+                    hud.trafficSignal.state === 'YELLOW'
+                      ? 'bg-amber-400 shadow-md shadow-amber-400 ring-2 ring-amber-300 animate-pulse'
+                      : 'bg-amber-950/60'
+                  }`}
+                />
+                <span
+                  className={`h-3 w-3 rounded-full transition-all duration-200 ${
+                    hud.trafficSignal.state === 'GREEN'
+                      ? 'bg-emerald-500 shadow-md shadow-emerald-500 ring-2 ring-emerald-300'
+                      : 'bg-emerald-950/60'
+                  }`}
+                />
+              </div>
+
+              <div className="text-left">
+                <div className="text-[10px] font-bold tracking-wide text-zinc-400">
+                  🚦 {hud.trafficSignal.crossingNameBn} ({hud.trafficSignal.distanceToStopLine} মি.)
+                </div>
+                <div className="flex items-center gap-1.5 text-xs font-black">
+                  {hud.trafficSignal.state === 'RED' && (
+                    <span className="text-rose-400">
+                      🔴 লাল বাতি: স্টপে থামুন! ({hud.trafficSignal.secondsRemaining}s)
+                    </span>
+                  )}
+                  {hud.trafficSignal.state === 'YELLOW' && (
+                    <span className="text-amber-300">
+                      🟡 হলুদ সংকেত: গতি কমান ({hud.trafficSignal.secondsRemaining}s)
+                    </span>
+                  )}
+                  {hud.trafficSignal.state === 'GREEN' && (
+                    <span className="text-emerald-400">
+                      🟢 সবুজ বাতি: চালান! ({hud.trafficSignal.secondsRemaining}s)
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Right: Wanted Stars, Speed, Traffic & Pause */}
         <div className="pointer-events-auto flex items-start gap-2">
@@ -332,6 +397,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                   [CameraMode.CHASE, 'চেজ'],
                   [CameraMode.ACTION, 'অ্যাকশন'],
                   [CameraMode.DRIVER, 'ড্রাইভার'],
+                  [CameraMode.FRONT, 'সামনে/ফেস'],
                 ] as const
               ).map(([mode, label]) => (
                 <button
@@ -348,6 +414,25 @@ export const GameHud: React.FC<GameHudProps> = ({
                 </button>
               ))}
             </div>
+
+            {/* Dhaka Traffic FM Radio Tuner */}
+            <button
+              type="button"
+              onClick={handleToggleRadio}
+              title="ঢাকা ট্রাফিক এফএম ৯৮.৪ রেডিও টিউন করুন"
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                radioStation !== 'OFF'
+                  ? 'border-emerald-500/50 bg-emerald-950/70 text-emerald-300 hover:bg-emerald-900/60'
+                  : 'border-white/10 bg-zinc-900 text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              <Radio
+                className={`h-3.5 w-3.5 ${
+                  radioStation !== 'OFF' ? 'text-emerald-400 animate-pulse' : 'text-zinc-500'
+                }`}
+              />
+              <span>{soundEngine.getRadioStationLabel()}</span>
+            </button>
 
             {/* Atmosphere Presets */}
             <div className="hidden items-center gap-1 rounded-lg bg-zinc-900 p-0.5 md:flex">
