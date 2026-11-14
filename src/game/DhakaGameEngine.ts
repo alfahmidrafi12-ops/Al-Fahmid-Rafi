@@ -10,29 +10,23 @@ import {
   InputState,
   ScreenPopup,
   SignalColor,
-  TimeOfDay,
-  TrafficLightState,
   TrafficSignalHudInfo,
+  WeatherType,
 } from '../types/game';
 import {
+  CityCellStallData,
+  createCityGridCell,
   createCngModel,
   createDhakaBusModel,
+  createDhakaTruckModel,
   createDriverModel,
-  createFestiveBuntingGarland,
-  createHeritageBuildingModel,
+  createLegunaModel,
   createMobModel,
-  createMosqueModel,
-  createMetroViaductSegment,
+  createBorkaWomanModel,
   createPedestrianModel,
   createPickupModel,
   createRickshawModel,
-  createRoadsideBlock,
-  createShobjiStallModel,
-  createStallModel,
-  createTrafficIntersectionModel,
   createTrafficRickshawModel,
-  createTrashPileModel,
-  createTreeModel,
   DriverRig,
   MobRig,
   PedestrianRig,
@@ -43,29 +37,19 @@ import { createProceduralTextures, ProceduralTexturePack } from './textures';
 
 // Module-scope reusable math helpers (Zero GC in animation loop)
 const _v1 = new THREE.Vector3();
-const _v2 = new THREE.Vector3();
-const _v3 = new THREE.Vector3();
 const _camDesired = new THREE.Vector3();
 const _camLookTarget = new THREE.Vector3();
 const _dummyObj = new THREE.Object3D();
 const _colorTmp = new THREE.Color();
 
-const SEGMENT_LENGTH = 28;
-const NUM_SEGMENTS = 12;
-const HALF_SPAN = (SEGMENT_LENGTH * NUM_SEGMENTS) / 2;
-const ROAD_HALF_LIMIT = 8.5;
+const CELL_SIZE = 96;
+const GRID_SIZE = 3; // 3x3 = 9 seamless 96m super-cells (288m x 288m)
+const HALF_GRID_SPAN = (CELL_SIZE * GRID_SIZE) / 2; // 144m
+const ROAD_HALF_DRIVABLE = 7.35; // Curb inner edge is 8.0m
 const BELL_COOLDOWN_SEC = 3.8;
 const TURBO_DURATION_SEC = 4.5;
 const COMBO_WINDOW_SEC = 4.2;
 const HIGH_SCORE_STORAGE_KEY = 'dhandabaz_3d_highscore_v3';
-
-interface StallInstance {
-  mesh: THREE.Group;
-  active: boolean;
-  isVeggie: boolean;
-  localSide: -1 | 1;
-  localZOffset: number;
-}
 
 const CROSSING_NAMES = [
   'গুলিস্তান জিরো পয়েন্ট মোড়',
@@ -76,35 +60,45 @@ const CROSSING_NAMES = [
   'মৌচাক ক্রসিং মোড়',
 ];
 
-interface IntersectionInstance {
-  id: number;
-  segmentIndex: number;
-  crossingNameBn: string;
+const DISTRICT_NAMES = [
+  'মতিঝিল বাণিজ্যিক এলাকা',
+  'ঢাকা জেলা জজ আদালত চত্বর',
+  'বাংলাদেশ সচিবালয় পাড়া',
+  'পুরান ঢাকা চকবাজার',
+  'গুলিস্তান জিরো পয়েন্ট',
+  'কাওরান বাজার মেট্রো রোড',
+  'শাহবাগ ও টিএসসি এলাকা',
+  'বংশাল ও নবাবপুর রোড',
+];
+
+interface CityCell {
   group: THREE.Group;
+  metroGroup: THREE.Group;
+  gridX: number;
+  gridZ: number;
+  xCenter: number;
+  zCenter: number;
+  stalls: CityCellStallData[];
+  lampBulbs: THREE.Mesh[];
+  asphaltMats: THREE.MeshStandardMaterial[];
   lightRig: TrafficLightRig;
   state: SignalColor;
   timer: number;
+  crossingNameBn: string;
   playerViolated: boolean;
   playerRewarded: boolean;
-  crossVehicle: THREE.Group;
-  crossVehicleActive: boolean;
-  crossVehicleX: number;
-  crossVehicleSpeed: number;
-}
-
-interface RoadSegment {
-  group: THREE.Group;
-  zCenter: number;
-  stalls: StallInstance[];
-  lampBulbs: THREE.Mesh[];
-  intersection?: IntersectionInstance;
 }
 
 interface TrafficVehicle {
   mesh: THREE.Group;
-  vehicleType: 'bus' | 'cng' | 'rickshaw';
+  vehicleType: 'bus' | 'truck' | 'cng' | 'rickshaw' | 'leguna';
+  halfLen: number;
   isBus: boolean;
-  laneX: number;
+  isTruck: boolean;
+  axis: 'Z' | 'X';
+  aveBase: number; // Grid avenue coordinate (multiples of 96): X for 'Z' axis, Z for 'X' axis
+  laneOffset: number; // Lateral lane offset within [-5.0, +5.0]
+  targetLaneOffset: number;
   baseSpeed: number;
   currentSpeed: number;
   direction: -1 | 1;
@@ -112,12 +106,21 @@ interface TrafficVehicle {
   hitCooldown: number;
   hornCooldown: number;
   stoppedAtLight: boolean;
+  overtakeCooldown: number;
+  swayPhase: number;
 }
 
 interface StreetPickup {
   mesh: THREE.Group;
   kind: 'biryani' | 'chai';
   active: boolean;
+}
+
+interface PedestrianEntry {
+  rig: PedestrianRig;
+  axis: 'Z' | 'X';
+  side: -1 | 1;
+  aveBase: number;
 }
 
 interface ActiveMob {
@@ -144,6 +147,11 @@ export interface EngineCallbacks {
   onPopup: (popup: ScreenPopup) => void;
 }
 
+function wrapCellLocal(val: number): number {
+  const m = (((val + CELL_SIZE * 0.5) % CELL_SIZE) + CELL_SIZE) % CELL_SIZE;
+  return m - CELL_SIZE * 0.5;
+}
+
 export class DhakaGameEngine {
   private container: HTMLElement;
   private callbacks: EngineCallbacks;
@@ -164,12 +172,11 @@ export class DhakaGameEngine {
   private driver: DriverRig | null = null;
   private selectedDriverId: DriverId = 'kader';
 
-  private segments: RoadSegment[] = [];
+  private cells: CityCell[] = [];
   private traffic: TrafficVehicle[] = [];
-  private pedestrians: PedestrianRig[] = [];
+  private pedestrians: PedestrianEntry[] = [];
   private pickups: StreetPickup[] = [];
   private mobs: ActiveMob[] = [];
-  private intersections: IntersectionInstance[] = [];
   private activeCrossingHudInfo?: TrafficSignalHudInfo;
 
   // Instanced debris system (Zero GC)
@@ -185,15 +192,41 @@ export class DhakaGameEngine {
   // Game & Physics state
   private phase: GamePhase = GamePhase.MENU;
   private cameraMode: CameraMode = CameraMode.CHASE;
-  private timeOfDay: TimeOfDay = TimeOfDay.DUSK;
+  private weather: WeatherType = 'SUNNY';
+  private roadGrip = 1.0;
+
+  private cloudGroup!: THREE.Group;
+  private cloudMat!: THREE.MeshBasicMaterial;
+  private clouds: { mesh: THREE.Group; speed: number; overcastOnly: boolean }[] = [];
+  private ambientMotes!: THREE.Points;
+  private ambientMotesMat!: THREE.PointsMaterial;
+  private ambientMotesPos!: Float32Array;
+  private readonly moteCount = 150;
+  private skyDome!: THREE.Mesh;
+  private skyUniforms!: {
+    uZenithColor: { value: THREE.Color };
+    uMidColor: { value: THREE.Color };
+    uHorizonColor: { value: THREE.Color };
+    uSunDir: { value: THREE.Vector3 };
+    uSunGlow: { value: number };
+  };
 
   private speed = 0;
+  private lateralVel = 0;
+  private angularVel = 0;
   private steerAngle = 0;
   private yaw = 0;
+  private pitchAngle = 0;
+  private bounceHeight = 0;
+  private bounceVel = 0;
   private wheelSpin = 0;
   private menuOrbitAngle = 0.45;
   private cameraShake = 0;
+  private curbHitCooldown = 0;
   private currentLookAt = new THREE.Vector3(0, 1.4, 0);
+  private lastPlayerGridX = 0;
+  private lastPlayerGridZ = 0;
+  private cityGround!: THREE.Mesh;
 
   private money = 0;
   private highScore = 0;
@@ -244,7 +277,7 @@ export class DhakaGameEngine {
     this.initScene();
     this.buildWorld();
     this.setDriver('kader', false);
-    this.applyTimeOfDay(TimeOfDay.DUSK);
+    this.applyWeather('SUNNY');
     this.bindEvents();
 
     if (!this.isSoftwareGl) {
@@ -276,10 +309,10 @@ export class DhakaGameEngine {
     const height = this.container.clientHeight || window.innerHeight;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x281938);
-    this.scene.fog = new THREE.FogExp2(0x281938, 0.0105);
+    this.scene.background = new THREE.Color(0xbce0fa);
+    this.scene.fog = new THREE.FogExp2(0xc9e4f8, 0.0056);
 
-    this.camera = new THREE.PerspectiveCamera(60, width / height, 0.15, 280);
+    this.camera = new THREE.PerspectiveCamera(60, width / height, 0.15, 260);
     this.camera.position.set(3.8, 2.8, 5.2);
 
     this.renderer = new THREE.WebGLRenderer({
@@ -288,9 +321,9 @@ export class DhakaGameEngine {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 1.04;
     this.renderer.setPixelRatio(
-      this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2)
+      this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 1.5)
     );
     this.renderer.setSize(width, height);
     this.renderer.shadowMap.enabled = !this.isSoftwareGl;
@@ -298,48 +331,57 @@ export class DhakaGameEngine {
 
     this.container.appendChild(this.renderer.domElement);
 
-    // Studio Environment reflection
     const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
     this.envMapTexture = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environment = this.envMapTexture;
+    this.scene.environmentIntensity = 0.68;
     pmremGenerator.dispose();
 
     const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
     this.textures = createProceduralTextures(maxAniso);
 
-    // Enhanced Realistic 3-Point Lighting
-    this.hemiLight = new THREE.HemisphereLight(0xfdba74, 0x1e293b, 0.95);
+    this.hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x475569, 1.15);
     this.hemiLight.position.set(0, 45, 0);
     this.scene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xffedd5, 2.4);
-    this.sunLight.position.set(28, 36, 22);
+    this.sunLight = new THREE.DirectionalLight(0xfff1d6, 2.55);
+    this.sunLight.position.set(28, 46, 22);
     this.sunLight.castShadow = !this.isSoftwareGl;
     this.sunLight.shadow.mapSize.set(1024, 1024);
-    const d = 36;
+    const d = 34;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
     this.sunLight.shadow.camera.bottom = -d;
     this.sunLight.shadow.camera.near = 2;
-    this.sunLight.shadow.camera.far = 120;
+    this.sunLight.shadow.camera.far = 115;
     this.sunLight.shadow.bias = -0.0005;
     this.sunLight.shadow.normalBias = 0.02;
     this.scene.add(this.sunLight);
     this.scene.add(this.sunLight.target);
 
-    this.rimLight = new THREE.DirectionalLight(0x38bdf8, 0.65);
+    this.rimLight = new THREE.DirectionalLight(0x93c5fd, 0.48);
     this.rimLight.position.set(-22, 20, -30);
     this.scene.add(this.rimLight);
   }
 
+  private getCrossingName(gx: number, gz: number): string {
+    const hash = Math.abs(gx * 7 + gz * 13);
+    return CROSSING_NAMES[hash % CROSSING_NAMES.length];
+  }
+
+  private getDistrictName(gx: number, gz: number): string {
+    const hash = Math.abs(gx * 11 + gz * 5 + 3);
+    return DISTRICT_NAMES[hash % DISTRICT_NAMES.length];
+  }
+
   private buildWorld(): void {
-    // 1. Rickshaw
+    // 1. Player Rickshaw
     this.rickshaw = createRickshawModel(this.textures);
     this.scene.add(this.rickshaw.root);
 
     // 2. Bell Sonic Shockwave Ring
-    const ringGeo = new THREE.RingGeometry(0.75, 1.05, 36);
+    const ringGeo = new THREE.RingGeometry(0.75, 1.05, 32);
     ringGeo.rotateX(-Math.PI / 2);
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0xfacc15,
@@ -353,297 +395,325 @@ export class DhakaGameEngine {
     this.shockwaveRing.visible = false;
     this.scene.add(this.shockwaveRing);
 
-    // 3. Road Segments
-    const roadGeo = new THREE.PlaneGeometry(18, SEGMENT_LENGTH);
-    roadGeo.rotateX(-Math.PI / 2);
-    const roadMat = new THREE.MeshStandardMaterial({
-      map: this.textures.asphalt,
-      roughness: 0.86,
-      metalness: 0.06,
+    // 2b. Infinite Ground Foundation following player (Zero horizon void anywhere)
+    const groundGeo = new THREE.PlaneGeometry(500, 500);
+    groundGeo.rotateX(-Math.PI / 2);
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x181c24,
+      roughness: 0.94,
+      metalness: 0.04,
     });
+    this.cityGround = new THREE.Mesh(groundGeo, groundMat);
+    this.cityGround.position.set(0, -0.02, 0);
+    this.cityGround.receiveShadow = true;
+    this.scene.add(this.cityGround);
 
-    const curbGeo = new THREE.BoxGeometry(0.6, 0.34, SEGMENT_LENGTH);
-    const curbMat = new THREE.MeshStandardMaterial({
-      map: this.textures.curb,
-      roughness: 0.72,
-    });
-
-    const sidewalkGeo = new THREE.BoxGeometry(3.4, 0.28, SEGMENT_LENGTH);
-    const sidewalkMat = new THREE.MeshStandardMaterial({
-      map: this.textures.sidewalk,
-      roughness: 0.85,
-    });
-
-    const wireMat = new THREE.LineBasicMaterial({ color: 0x09090b });
-
-    for (let i = 0; i < NUM_SEGMENTS; i++) {
-      const zCenter = HALF_SPAN - (i + 0.5) * SEGMENT_LENGTH;
-      const segGroup = new THREE.Group();
-      segGroup.position.z = zCenter;
-
-      const roadMesh = new THREE.Mesh(roadGeo, roadMat);
-      roadMesh.receiveShadow = true;
-      segGroup.add(roadMesh);
-
-      [-9.3, 9.3].forEach((cx) => {
-        const curbMesh = new THREE.Mesh(curbGeo, curbMat);
-        curbMesh.position.set(cx, 0.17, 0);
-        curbMesh.receiveShadow = true;
-        segGroup.add(curbMesh);
-      });
-
-      [-11.2, 11.2].forEach((sx) => {
-        const swMesh = new THREE.Mesh(sidewalkGeo, sidewalkMat);
-        swMesh.position.set(sx, 0.14, 0);
-        swMesh.receiveShadow = true;
-        segGroup.add(swMesh);
-      });
-
-      const lampBulbs: THREE.Mesh[] = [];
-      ([-1, 1] as const).forEach((side) => {
-        // Authentic Purana Dhaka Architectural Variation:
-        // 1. Triple-domed Mughal Mosque (Tara Masjid style) on side === 1, i % 4 === 0
-        if (side === 1 && i % 4 === 0) {
-          const mosque = createMosqueModel(this.textures);
-          mosque.position.set(side * 15.6, 0, 0);
-          mosque.rotation.y = side === 1 ? 0 : Math.PI; // SHOZA KORA: Front facade & minarets face directly towards the road!
-          segGroup.add(mosque);
-
-          // Plant trees in the open courtyards flanking the mosque
-          const treeNorth = createTreeModel((i + 0) % 4, this.textures);
-          treeNorth.position.set(side * 14.0, 0, -9.2);
-          segGroup.add(treeNorth);
-
-          const treeSouth = createTreeModel((i + 1) % 4, this.textures);
-          treeSouth.position.set(side * 14.0, 0, 9.2);
-          segGroup.add(treeSouth);
-        } else if (side === -1 && i % 3 === 1) {
-          // 2. Old Historical Red Brick Heritage Building (Shankhari Bazar / Ruplal House style)
-          const heritage = createHeritageBuildingModel(side, i, this.textures);
-          segGroup.add(heritage);
-
-          // Plant trees in the open gaps flanking heritage building
-          const treeNorth = createTreeModel((i + 2) % 4, this.textures);
-          treeNorth.position.set(side * 14.0, 0, -9.2);
-          segGroup.add(treeNorth);
-
-          const treeSouth = createTreeModel((i + 3) % 4, this.textures);
-          treeSouth.position.set(side * 14.0, 0, 9.2);
-          segGroup.add(treeSouth);
-        } else {
-          // 3. Dense commercial roadside blocks with posters & billboards
-          const blockA = createRoadsideBlock(side, i * 2 + (side > 0 ? 1 : 0), this.textures);
-          blockA.group.position.z = -6.5;
-          segGroup.add(blockA.group);
-          lampBulbs.push(blockA.lampBulb);
-
-          const blockB = createRoadsideBlock(side, i * 2 + 3 + (side > 0 ? 1 : 0), this.textures);
-          blockB.group.position.z = 6.5;
-          segGroup.add(blockB.group);
-          lampBulbs.push(blockB.lampBulb);
-
-          // BUILDING ER FAKA JAIGAI GAS LAGA (Plant authentic trees in gaps between buildings):
-          // A. Center gap between blockA and blockB (at Z = 0)
-          const treeCenter = createTreeModel((i * 2 + (side > 0 ? 0 : 1)) % 4, this.textures);
-          treeCenter.position.set(side * 13.8, 0, 0);
-          segGroup.add(treeCenter);
-
-          // B. Outer gap at segment seam boundaries (at Z = ±12.8)
-          const treeBoundary = createTreeModel((i * 2 + (side > 0 ? 2 : 3)) % 4, this.textures);
-          treeBoundary.position.set(side * 13.8, 0, i % 2 === 0 ? -12.8 : 12.8);
-          segGroup.add(treeBoundary);
+    // 2c. Atmospheric Procedural Gradient Sky Dome (Sunny vs Cloudy monsoon sky — zero fog occlusion)
+    this.skyUniforms = {
+      uZenithColor: { value: new THREE.Color(0x2d6cb5) },
+      uMidColor: { value: new THREE.Color(0x78b8ed) },
+      uHorizonColor: { value: new THREE.Color(0xd2e9fa) },
+      uSunDir: { value: new THREE.Vector3(26, 48, 20).normalize() },
+      uSunGlow: { value: 0.48 },
+    };
+    const skyGeo = new THREE.SphereGeometry(195, 24, 16);
+    const skyMat = new THREE.ShaderMaterial({
+      uniforms: this.skyUniforms,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+      vertexShader: `
+        varying vec3 vWorldDir;
+        void main() {
+          vWorldDir = normalize(position);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
-      });
+      `,
+      fragmentShader: `
+        uniform vec3 uZenithColor;
+        uniform vec3 uMidColor;
+        uniform vec3 uHorizonColor;
+        uniform vec3 uSunDir;
+        uniform float uSunGlow;
+        varying vec3 vWorldDir;
+        void main() {
+          float h = clamp(vWorldDir.y, 0.0, 1.0);
+          vec3 col = mix(uHorizonColor, uMidColor, smoothstep(0.0, 0.28, h));
+          col = mix(col, uZenithColor, smoothstep(0.24, 0.88, h));
+          float sunAmt = max(dot(normalize(vWorldDir), uSunDir), 0.0);
+          col += vec3(1.0, 0.94, 0.80) * pow(sunAmt, 14.0) * uSunGlow;
+          col += vec3(1.0, 0.98, 0.92) * smoothstep(0.9965, 0.9994, sunAmt) * uSunGlow * 1.4;
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `,
+    });
+    this.skyDome = new THREE.Mesh(skyGeo, skyMat);
+    this.skyDome.frustumCulled = false;
+    this.scene.add(this.skyDome);
 
-      // 100% COMPLETE, UNBROKEN DHAKA METRO RAIL (MRT LINE 6) OVERHEAD VIADUCT (Continuous across all segments!)
-      const hasMetroTrain = i % 3 === 0;
-      const viaduct = createMetroViaductSegment(this.textures, hasMetroTrain);
-      viaduct.position.set(0, 0, 0);
-      segGroup.add(viaduct);
-
-      // FESTIVE COLORFUL BUNTING GARLANDS ("রঙিন ঝালর ও মেলা পতাকা") overhead on every segment
-      const bunting = createFestiveBuntingGarland(22, this.textures);
-      bunting.position.set(0, 0, (i % 2 === 0 ? -5.5 : 5.5));
-      segGroup.add(bunting);
-
-      // DHAKA CITY CORPORATION DUMPSTERS & ROADSIDE TRASH ("সিটি কর্পোরেশন ময়লার ডাস্টবিন")
-      const trashDumpster = createTrashPileModel(this.textures);
-      const tSide = i % 2 === 0 ? -1 : 1;
-      trashDumpster.position.set(tSide * 9.15, 0, (i % 3 === 0 ? -11.0 : 11.0));
-      trashDumpster.rotation.y = tSide < 0 ? Math.PI / 2 : -Math.PI / 2;
-      segGroup.add(trashDumpster);
-
-      // Overhead tangled wires
-      const wireCurve = new THREE.QuadraticBezierCurve3(
-        new THREE.Vector3(-9.7, 6.6, -0.7),
-        new THREE.Vector3(0, 5.75, 0),
-        new THREE.Vector3(9.7, 6.6, -0.7)
-      );
-      const wireGeo = new THREE.BufferGeometry().setFromPoints(wireCurve.getPoints(10));
-      segGroup.add(new THREE.Line(wireGeo, wireMat));
-
-      // MAJOR DHAKA TRAFFIC LIGHT INTERSECTION ("চৌরাস্তা মোড় ও ট্রাফিক সিগন্যাল")
-      // Placed on segments where i % 4 === 2 (every 112m)
-      const isIntersection = i % 4 === 2;
-      let intersectionInst: IntersectionInstance | undefined;
-      if (isIntersection) {
-        const crossingName = CROSSING_NAMES[Math.floor(i / 2) % CROSSING_NAMES.length];
-        const interModel = createTrafficIntersectionModel(this.textures, crossingName);
-        interModel.group.position.set(0, 0, 0);
-        segGroup.add(interModel.group);
-
-        // Cross-traffic vehicle (Bus or CNG traversing perpendicularly during RED)
-        const crossVeh =
-          i % 2 === 0
-            ? createDhakaBusModel(this.textures)
-            : createCngModel(this.textures);
-        crossVeh.position.set(-30, 0, 0);
-        crossVeh.rotation.y = -Math.PI / 2; // facing across road along +X
-        crossVeh.visible = false;
-        segGroup.add(crossVeh);
-
-        intersectionInst = {
-          id: i,
-          segmentIndex: i,
-          crossingNameBn: crossingName,
-          group: segGroup,
-          lightRig: interModel.lightRig,
-          state: (i % 2 === 0 ? 'RED' : 'GREEN') as SignalColor,
-          timer: 6.0 + (i % 3) * 2.5,
-          playerViolated: false,
-          playerRewarded: false,
-          crossVehicle: crossVeh,
-          crossVehicleActive: false,
-          crossVehicleX: -32,
-          crossVehicleSpeed: 15.5,
-        };
-        intersectionInst.lightRig.setSignal(intersectionInst.state);
-        this.intersections.push(intersectionInst);
+    // 2d. Multi-Layered Drifting Sky Clouds (for Sunny & Cloudy Dhaka atmosphere)
+    this.cloudGroup = new THREE.Group();
+    this.cloudMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.72,
+      depthWrite: false,
+    });
+    const puffGeo = new THREE.SphereGeometry(1, 8, 6);
+    for (let i = 0; i < 20; i++) {
+      const cluster = new THREE.Group();
+      const puffCount = 3 + (i % 4);
+      for (let j = 0; j < puffCount; j++) {
+        const puff = new THREE.Mesh(puffGeo, this.cloudMat);
+        const rxScale = 6.2 + ((i * 7 + j * 3) % 6);
+        const ryScale = 1.7 + ((i + j) % 3) * 0.5;
+        const rzScale = 4.6 + ((i * 5 + j * 2) % 5);
+        puff.scale.set(rxScale, ryScale, rzScale);
+        puff.position.set(
+          (j - (puffCount - 1) * 0.5) * 4.8,
+          ((i + j) % 2) * 0.9,
+          (((j * 3) % 3) - 1) * 2.4
+        );
+        cluster.add(puff);
       }
-
-      // DENSE PURANA DHAKA STREET LIFE: Stalls & vendors
-      // At intersections, we leave the perpendicular cross street clear (skip |zOff| < 5)
-      const stalls: StallInstance[] = [];
-      const zOffsets = isIntersection ? [-10.5, 10.5] : [-10.2, -3.6, 3.6, 10.2];
-
-      ([-1, 1] as const).forEach((side) => {
-        zOffsets.forEach((zOff, sIdx) => {
-          const isVeggie = (i * 4 + sIdx + (side > 0 ? 1 : 0)) % 2 === 0;
-          const stallVariant = (i * 3 + sIdx + (side > 0 ? 2 : 0)) % 6;
-          const stallMesh = isVeggie
-            ? createShobjiStallModel(this.textures)
-            : createStallModel(stallVariant, this.textures);
-
-          stallMesh.position.set(side * 7.55, 0, zOff);
-          stallMesh.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2;
-          const keepClear = Math.abs(zCenter + zOff) < 14;
-          stallMesh.visible = !keepClear;
-          segGroup.add(stallMesh);
-          stalls.push({
-            mesh: stallMesh,
-            active: !keepClear,
-            isVeggie,
-            localSide: side,
-            localZOffset: zOff,
-          });
-        });
-      });
-
-      this.scene.add(segGroup);
-      this.segments.push({
-        group: segGroup,
-        zCenter,
-        stalls,
-        lampBulbs,
-        intersection: intersectionInst,
+      const gridRow = Math.floor(i / 5);
+      const gridCol = i % 5;
+      cluster.position.set(
+        -112 + gridCol * 56 + ((i * 19) % 22),
+        46 + (i % 4) * 4.2,
+        -112 + gridRow * 68 + ((i * 13) % 22)
+      );
+      this.cloudGroup.add(cluster);
+      this.clouds.push({
+        mesh: cluster,
+        speed: 1.5 + (i % 4) * 0.55,
+        overcastOnly: i % 2 === 1,
       });
     }
+    this.scene.add(this.cloudGroup);
 
-    // 4. DHAKAR TRAFFIC: Green CNGs, Local Buses, & Traditional Cycle Rickshaws ("আরো রিকশা")
-    const trafficConfigs = [
-      { type: 'bus' as const, isBus: true, laneX: -4.5, dir: -1 as const, speed: 7.2 },
-      { type: 'cng' as const, isBus: false, laneX: -2.0, dir: -1 as const, speed: 10.5 },
-      { type: 'rickshaw' as const, isBus: false, laneX: -6.2, dir: -1 as const, speed: 5.5 },
-      { type: 'cng' as const, isBus: false, laneX: 2.0, dir: 1 as const, speed: 9.8 },
-      { type: 'rickshaw' as const, isBus: false, laneX: -1.6, dir: 1 as const, speed: 5.8 },
-      { type: 'bus' as const, isBus: true, laneX: 4.5, dir: 1 as const, speed: 7.5 },
-      { type: 'rickshaw' as const, isBus: false, laneX: 6.2, dir: 1 as const, speed: 5.2 },
-      { type: 'cng' as const, isBus: false, laneX: -3.2, dir: -1 as const, speed: 11.2 },
-      { type: 'cng' as const, isBus: false, laneX: 3.2, dir: 1 as const, speed: 10.2 },
-      { type: 'rickshaw' as const, isBus: false, laneX: 5.8, dir: -1 as const, speed: 5.4 },
-      { type: 'bus' as const, isBus: true, laneX: -4.2, dir: 1 as const, speed: 6.8 },
-      { type: 'rickshaw' as const, isBus: false, laneX: -5.8, dir: -1 as const, speed: 5.6 },
-      { type: 'cng' as const, isBus: false, laneX: 1.6, dir: -1 as const, speed: 11.0 },
-      { type: 'bus' as const, isBus: true, laneX: 4.2, dir: -1 as const, speed: 7.0 },
+    // 2e. Subtle Atmospheric Sunbeam Dust / Humid Monsoon Breeze Motes (Zero-GC Points buffer)
+    this.ambientMotesPos = new Float32Array(this.moteCount * 3);
+    for (let i = 0; i < this.moteCount; i++) {
+      this.ambientMotesPos[i * 3] = (Math.random() - 0.5) * 56;
+      this.ambientMotesPos[i * 3 + 1] = 0.6 + Math.random() * 14;
+      this.ambientMotesPos[i * 3 + 2] = (Math.random() - 0.5) * 56;
+    }
+    const moteGeo = new THREE.BufferGeometry();
+    moteGeo.setAttribute('position', new THREE.BufferAttribute(this.ambientMotesPos, 3));
+    this.ambientMotesMat = new THREE.PointsMaterial({
+      color: 0xfef3c7,
+      size: 0.22,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
+    });
+    this.ambientMotes = new THREE.Points(moteGeo, this.ambientMotesMat);
+    this.ambientMotes.frustumCulled = false;
+    this.scene.add(this.ambientMotes);
+
+    // 3. 3x3 INFINITE 2D CITY SUPER-CELL GRID (Every cell = 96m x 96m)
+    let cellIdx = 0;
+    for (let gz = -1; gz <= 1; gz++) {
+      for (let gx = -1; gx <= 1; gx++) {
+        const res = createCityGridCell(cellIdx, this.textures);
+        const xCenter = gx * CELL_SIZE;
+        const zCenter = gz * CELL_SIZE;
+        res.group.position.set(xCenter, 0, zCenter);
+        // Metro viaduct appears ONLY along the central main corridor (gridX === 0)
+        res.metroGroup.visible = gx === 0;
+        this.scene.add(res.group);
+
+        const initialSignal: SignalColor = (gx + gz) % 2 === 0 ? 'GREEN' : 'RED';
+        res.lightRig.setSignal(initialSignal);
+
+        this.cells.push({
+          group: res.group,
+          metroGroup: res.metroGroup,
+          gridX: gx,
+          gridZ: gz,
+          xCenter,
+          zCenter,
+          stalls: res.stalls,
+          lampBulbs: res.lampBulbs,
+          asphaltMats: res.asphaltMats,
+          lightRig: res.lightRig,
+          state: initialSignal,
+          timer: 6.0 + (cellIdx % 3) * 2.5,
+          crossingNameBn: this.getCrossingName(gx, gz),
+          playerViolated: false,
+          playerRewarded: false,
+        });
+        cellIdx++;
+      }
+    }
+
+    // 4. 2D INFINITE DHAKA TRAFFIC (Abundant Cycle Rickshaws + Buses, Trucks, Sculpted CNGs & Legunas)
+    const zConfigs = [
+      { type: 'rickshaw' as const, laneOffset: -5.2, dir: -1 as const, speed: 5.2, posOffset: -18 },
+      { type: 'rickshaw' as const, laneOffset: -4.8, dir: -1 as const, speed: 4.8, posOffset: -54 },
+      { type: 'rickshaw' as const, laneOffset: -5.3, dir: -1 as const, speed: 5.7, posOffset: 26 },
+      { type: 'rickshaw' as const, laneOffset: -4.9, dir: -1 as const, speed: 5.0, posOffset: 76 },
+      { type: 'rickshaw' as const, laneOffset: -5.1, dir: -1 as const, speed: 5.5, posOffset: -94 },
+      { type: 'truck' as const, laneOffset: -3.7, dir: -1 as const, speed: 6.9, posOffset: -34 },
+      { type: 'bus' as const, laneOffset: -3.8, dir: -1 as const, speed: 7.9, posOffset: -76 },
+      { type: 'leguna' as const, laneOffset: -3.3, dir: -1 as const, speed: 9.2, posOffset: 42 },
+      { type: 'cng' as const, laneOffset: -1.8, dir: -1 as const, speed: 12.2, posOffset: -46 },
+      { type: 'cng' as const, laneOffset: -1.9, dir: -1 as const, speed: 11.4, posOffset: 62 },
+      { type: 'rickshaw' as const, laneOffset: 5.2, dir: 1 as const, speed: 5.4, posOffset: -42 },
+      { type: 'rickshaw' as const, laneOffset: 4.8, dir: 1 as const, speed: 4.9, posOffset: 16 },
+      { type: 'rickshaw' as const, laneOffset: 5.3, dir: 1 as const, speed: 5.8, posOffset: 58 },
+      { type: 'rickshaw' as const, laneOffset: 4.9, dir: 1 as const, speed: 5.1, posOffset: -84 },
+      { type: 'truck' as const, laneOffset: 3.7, dir: 1 as const, speed: 6.7, posOffset: -60 },
+      { type: 'bus' as const, laneOffset: 3.8, dir: 1 as const, speed: 7.6, posOffset: 28 },
+      { type: 'leguna' as const, laneOffset: 3.3, dir: 1 as const, speed: 9.0, posOffset: -90 },
+      { type: 'cng' as const, laneOffset: 1.8, dir: 1 as const, speed: 12.4, posOffset: -24 },
+      { type: 'cng' as const, laneOffset: 1.9, dir: 1 as const, speed: 11.8, posOffset: 82 },
     ];
 
-    for (let i = 0; i < trafficConfigs.length; i++) {
-      const cfg = trafficConfigs[i];
-      let mesh: THREE.Group;
-      if (cfg.type === 'bus') {
-        mesh = createDhakaBusModel(this.textures);
-      } else if (cfg.type === 'cng') {
-        mesh = createCngModel(this.textures);
-      } else {
-        mesh = createTrafficRickshawModel(this.textures, i);
-      }
+    const xConfigs = [
+      { type: 'rickshaw' as const, laneOffset: -5.2, dir: 1 as const, speed: 5.3, posOffset: -82 },
+      { type: 'rickshaw' as const, laneOffset: -4.9, dir: 1 as const, speed: 4.7, posOffset: -22 },
+      { type: 'rickshaw' as const, laneOffset: -5.3, dir: 1 as const, speed: 5.6, posOffset: 48 },
+      { type: 'truck' as const, laneOffset: -3.7, dir: 1 as const, speed: 6.8, posOffset: -52 },
+      { type: 'bus' as const, laneOffset: -3.8, dir: 1 as const, speed: 7.8, posOffset: 32 },
+      { type: 'cng' as const, laneOffset: -1.9, dir: 1 as const, speed: 12.0, posOffset: -32 },
+      { type: 'leguna' as const, laneOffset: -3.3, dir: 1 as const, speed: 9.2, posOffset: 74 },
+      { type: 'rickshaw' as const, laneOffset: 5.2, dir: -1 as const, speed: 5.1, posOffset: -64 },
+      { type: 'rickshaw' as const, laneOffset: 4.9, dir: -1 as const, speed: 5.6, posOffset: 18 },
+      { type: 'rickshaw' as const, laneOffset: 5.3, dir: -1 as const, speed: 4.8, posOffset: 84 },
+      { type: 'truck' as const, laneOffset: 3.7, dir: -1 as const, speed: 6.7, posOffset: 52 },
+      { type: 'bus' as const, laneOffset: 3.8, dir: -1 as const, speed: 7.7, posOffset: -36 },
+      { type: 'cng' as const, laneOffset: 1.9, dir: -1 as const, speed: 11.8, posOffset: 24 },
+      { type: 'leguna' as const, laneOffset: 3.3, dir: -1 as const, speed: 9.0, posOffset: -78 },
+    ];
 
-      const startZ = -25 - i * 32;
-      mesh.position.set(cfg.laneX, 0, startZ);
+    const halfLengthByType: Record<TrafficVehicle['vehicleType'], number> = {
+      truck: 3.8,
+      bus: 4.9,
+      leguna: 2.8,
+      cng: 1.5,
+      rickshaw: 1.3,
+    };
+
+    const buildVehicleMesh = (type: TrafficVehicle['vehicleType'], seed: number): THREE.Group => {
+      if (type === 'truck') return createDhakaTruckModel(this.textures, seed % 5);
+      if (type === 'bus') return createDhakaBusModel(this.textures);
+      if (type === 'leguna') return createLegunaModel(this.textures);
+      if (type === 'cng') return createCngModel(this.textures);
+      return createTrafficRickshawModel(this.textures, seed);
+    };
+
+    zConfigs.forEach((cfg, i) => {
+      const mesh = buildVehicleMesh(cfg.type, i);
+      mesh.position.set(cfg.laneOffset, 0, cfg.posOffset);
       mesh.rotation.y = cfg.dir === -1 ? 0 : Math.PI;
       this.scene.add(mesh);
 
       this.traffic.push({
         mesh,
         vehicleType: cfg.type,
-        isBus: cfg.isBus,
-        laneX: cfg.laneX,
+        halfLen: halfLengthByType[cfg.type],
+        isBus: cfg.type === 'bus',
+        isTruck: cfg.type === 'truck',
+        axis: 'Z',
+        aveBase: 0,
+        laneOffset: cfg.laneOffset,
+        targetLaneOffset: cfg.laneOffset,
         baseSpeed: cfg.speed,
         currentSpeed: cfg.speed,
         direction: cfg.dir,
         nearMissAwarded: false,
         hitCooldown: 0,
-        hornCooldown: 1.0 + Math.random() * 4.0,
+        hornCooldown: 1.5 + Math.random() * 4.5,
         stoppedAtLight: false,
+        overtakeCooldown: 2.0 + Math.random() * 5.0,
+        swayPhase: Math.random() * Math.PI * 2,
       });
+    });
+
+    xConfigs.forEach((cfg, i) => {
+      const mesh = buildVehicleMesh(cfg.type, i + 3);
+      mesh.position.set(cfg.posOffset, 0, cfg.laneOffset);
+      mesh.rotation.y = cfg.dir === 1 ? -Math.PI / 2 : Math.PI / 2;
+      this.scene.add(mesh);
+
+      this.traffic.push({
+        mesh,
+        vehicleType: cfg.type,
+        halfLen: halfLengthByType[cfg.type],
+        isBus: cfg.type === 'bus',
+        isTruck: cfg.type === 'truck',
+        axis: 'X',
+        aveBase: 0,
+        laneOffset: cfg.laneOffset,
+        targetLaneOffset: cfg.laneOffset,
+        baseSpeed: cfg.speed,
+        currentSpeed: cfg.speed,
+        direction: cfg.dir,
+        nearMissAwarded: false,
+        hitCooldown: 0,
+        hornCooldown: 2.0 + Math.random() * 5.0,
+        stoppedAtLight: false,
+        overtakeCooldown: 2.5 + Math.random() * 5.0,
+        swayPhase: Math.random() * Math.PI * 2,
+      });
+    });
+
+    // 5. Animated Pedestrians on both N-S and E-W Sidewalks (28 lively Dhaka commuters incl. Borka-clad women)
+    for (let i = 0; i < 28; i++) {
+      const rig =
+        i % 3 === 1 || i % 7 === 0
+          ? createBorkaWomanModel(i, this.textures)
+          : createPedestrianModel(i, this.textures);
+      const axis: 'Z' | 'X' = i < 15 ? 'Z' : 'X';
+      const side: -1 | 1 = i % 2 === 0 ? -1 : 1;
+      const offset = -84 + (i % 14) * 13;
+      const laneLateral = 9.5 + (i % 3) * 0.55;
+
+      if (axis === 'Z') {
+        rig.root.position.set(side * laneLateral, 0.26, offset);
+        rig.root.rotation.y = rig.direction === 1 ? Math.PI : 0;
+      } else {
+        rig.root.position.set(offset, 0.26, side * laneLateral);
+        rig.root.rotation.y = rig.direction === 1 ? -Math.PI / 2 : Math.PI / 2;
+      }
+      this.scene.add(rig.root);
+      this.pedestrians.push({ rig, axis, side, aveBase: 0 });
     }
 
-    // 5. ONEK MANUS: Animated Pedestrians on Sidewalks (18 people)
-    for (let i = 0; i < 18; i++) {
-      const ped = createPedestrianModel(i, this.textures);
-      const side = i % 2 === 0 ? -1 : 1;
-      const swX = side * (10.5 + (i % 3) * 0.4);
-      const startZ = -90 + i * 14;
-      ped.root.position.set(swX, 0.28, startZ);
-      ped.root.rotation.y = ped.direction === 1 ? Math.PI : 0;
-      this.scene.add(ped.root);
-      this.pedestrians.push(ped);
-    }
-
-    // 6. Street Pickups (Biryani & Chai)
-    for (let i = 0; i < 4; i++) {
+    // 6. Street Pickups (Biryani & Chai across N-S and E-W avenues)
+    const pickupStarts: Array<[number, number]> = [
+      [-3.5, -36],
+      [3.5, -82],
+      [-36, 3.2],
+      [48, -3.2],
+      [-3.2, 54],
+      [3.2, -124],
+    ];
+    pickupStarts.forEach(([px, pz], i) => {
       const kind: 'biryani' | 'chai' = i % 2 === 0 ? 'chai' : 'biryani';
       const pMesh = createPickupModel(kind);
-      pMesh.position.set((i % 2 === 0 ? -1 : 1) * 3.5, 0, -48 - i * 52);
+      pMesh.position.set(px, 0, pz);
       this.scene.add(pMesh);
       this.pickups.push({ mesh: pMesh, kind, active: true });
-    }
+    });
 
-    // 7. Instanced Debris (Includes veggie colors: purple, orange, green, red!)
+    // 7. Instanced Debris (Zero GC)
     const debGeo = new THREE.BoxGeometry(0.26, 0.16, 0.38);
     const debMat = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.2 });
     this.debrisInstanced = new THREE.InstancedMesh(debGeo, debMat, this.maxDebris);
     this.debrisInstanced.frustumCulled = false;
 
     const veggiePalette = [
-      0x581c87, // Eggplant purple
-      0xea580c, // Carrot orange
-      0xdc2626, // Tomato red
-      0x16a34a, // Gourd green
-      0xa16207, // Potato golden brown
-      0xfacc15, // Mango yellow
-      0xd97706, // Wood crate
-      0x94a3b8, // Tin shard
+      0x581c87,
+      0xea580c,
+      0xdc2626,
+      0x16a34a,
+      0xa16207,
+      0xfacc15,
+      0xd97706,
+      0x94a3b8,
     ];
 
     for (let i = 0; i < this.maxDebris; i++) {
@@ -691,50 +761,107 @@ export class DhakaGameEngine {
     this.cameraMode = mode;
   }
 
-  public applyTimeOfDay(tod: TimeOfDay): void {
-    this.timeOfDay = tod;
-    if (tod === TimeOfDay.DUSK) {
-      this.scene.background = new THREE.Color(0x311e3f);
-      (this.scene.fog as THREE.FogExp2).color.setHex(0x311e3f);
-      (this.scene.fog as THREE.FogExp2).density = 0.0105;
-      this.hemiLight.color.setHex(0xfdba74);
-      this.hemiLight.groundColor.setHex(0x1e293b);
-      this.hemiLight.intensity = 0.95;
-      this.sunLight.color.setHex(0xffb36b);
-      this.sunLight.intensity = 2.4;
-      this.sunOffset.set(28, 36, 22);
-      this.rickshaw.headlightSpot.intensity = 3.2;
-    } else if (tod === TimeOfDay.NIGHT) {
-      this.scene.background = new THREE.Color(0x090d16);
-      (this.scene.fog as THREE.FogExp2).color.setHex(0x090d16);
-      (this.scene.fog as THREE.FogExp2).density = 0.0135;
-      this.hemiLight.color.setHex(0x38bdf8);
-      this.hemiLight.groundColor.setHex(0x09090b);
-      this.hemiLight.intensity = 0.52;
-      this.sunLight.color.setHex(0x93c5fd);
-      this.sunLight.intensity = 0.85;
-      this.sunOffset.set(-18, 42, 15);
-      this.rickshaw.headlightSpot.intensity = 5.8;
-    } else {
-      // Sunny Noon
-      this.scene.background = new THREE.Color(0x60a5fa);
-      (this.scene.fog as THREE.FogExp2).color.setHex(0x93c5fd);
-      (this.scene.fog as THREE.FogExp2).density = 0.008;
+  public applyWeather(weather: WeatherType): void {
+    this.weather = weather;
+    if (weather === 'SUNNY') {
+      this.scene.background = new THREE.Color(0xc4e3fa);
+      (this.scene.fog as THREE.FogExp2).color.setHex(0xd4e8fa);
+      (this.scene.fog as THREE.FogExp2).density = 0.0049;
+      this.renderer.toneMappingExposure = 1.07;
+      this.scene.environmentIntensity = 0.72;
+
       this.hemiLight.color.setHex(0xe0f2fe);
-      this.hemiLight.groundColor.setHex(0x475569);
-      this.hemiLight.intensity = 1.25;
-      this.sunLight.color.setHex(0xfffbeb);
-      this.sunLight.intensity = 2.8;
-      this.sunOffset.set(22, 55, 18);
-      this.rickshaw.headlightSpot.intensity = 0.6;
+      this.hemiLight.groundColor.setHex(0x786d60);
+      this.hemiLight.intensity = 1.18;
+      this.sunLight.color.setHex(0xfff0cf);
+      this.sunLight.intensity = 2.75;
+      this.sunOffset.set(26, 48, 20);
+      this.rimLight.color.setHex(0x93c5fd);
+      this.rimLight.intensity = 0.5;
+      this.rickshaw.headlightSpot.intensity = 0;
+      this.roadGrip = 1.0;
+
+      if (this.skyUniforms) {
+        this.skyUniforms.uZenithColor.value.setHex(0x2867b2);
+        this.skyUniforms.uMidColor.value.setHex(0x74b6ec);
+        this.skyUniforms.uHorizonColor.value.setHex(0xd9ecfb);
+        this.skyUniforms.uSunDir.value.set(26, 48, 20).normalize();
+        this.skyUniforms.uSunGlow.value = 0.56;
+      }
+
+      if (this.ambientMotesMat) {
+        this.ambientMotesMat.color.setHex(0xfef3c7);
+        this.ambientMotesMat.opacity = 0.44;
+      }
+
+      if (this.cloudMat) {
+        this.cloudMat.color.setHex(0xffffff);
+        this.cloudMat.opacity = 0.72;
+      }
+      for (const c of this.clouds) {
+        c.mesh.visible = !c.overcastOnly;
+      }
+      for (const cell of this.cells) {
+        for (const am of cell.asphaltMats) {
+          am.roughness = 0.84;
+          am.metalness = 0.06;
+        }
+      }
+    } else {
+      // Monsoon overcast Cloudy Dhaka daylight (realistic diffused overcast + damp tarmac)
+      this.scene.background = new THREE.Color(0x95a5b8);
+      (this.scene.fog as THREE.FogExp2).color.setHex(0xa6b5c6);
+      (this.scene.fog as THREE.FogExp2).density = 0.0082;
+      this.renderer.toneMappingExposure = 0.98;
+      this.scene.environmentIntensity = 0.6;
+
+      this.hemiLight.color.setHex(0xd6e0ea);
+      this.hemiLight.groundColor.setHex(0x4b5563);
+      this.hemiLight.intensity = 1.36;
+      this.sunLight.color.setHex(0xdbe4ef);
+      this.sunLight.intensity = 1.2;
+      this.sunOffset.set(16, 46, 12);
+      this.rimLight.color.setHex(0x94a3b8);
+      this.rimLight.intensity = 0.44;
+      this.rickshaw.headlightSpot.intensity = 1.2;
+      this.roadGrip = 0.9;
+
+      if (this.skyUniforms) {
+        this.skyUniforms.uZenithColor.value.setHex(0x526173);
+        this.skyUniforms.uMidColor.value.setHex(0x8293a6);
+        this.skyUniforms.uHorizonColor.value.setHex(0xa8b7c7);
+        this.skyUniforms.uSunDir.value.set(16, 46, 12).normalize();
+        this.skyUniforms.uSunGlow.value = 0.14;
+      }
+
+      if (this.ambientMotesMat) {
+        this.ambientMotesMat.color.setHex(0xdbeafe);
+        this.ambientMotesMat.opacity = 0.36;
+      }
+
+      if (this.cloudMat) {
+        this.cloudMat.color.setHex(0xc8d2de);
+        this.cloudMat.opacity = 0.9;
+      }
+      for (const c of this.clouds) {
+        c.mesh.visible = true;
+      }
+      for (const cell of this.cells) {
+        for (const am of cell.asphaltMats) {
+          am.roughness = 0.52;
+          am.metalness = 0.14;
+        }
+      }
     }
 
-    const bulbHex = tod === TimeOfDay.NOON ? 0x94a3b8 : 0xfef08a;
-    for (const seg of this.segments) {
-      for (const bulb of seg.lampBulbs) {
+    const bulbHex = weather === 'SUNNY' ? 0x94a3b8 : 0xfde68a;
+    for (const cell of this.cells) {
+      for (const bulb of cell.lampBulbs) {
         (bulb.material as THREE.MeshBasicMaterial).color.setHex(bulbHex);
       }
     }
+
+    this.emitHudSnapshot();
   }
 
   public startGame(): void {
@@ -774,9 +901,15 @@ export class DhakaGameEngine {
   private resetWorldForRun(): void {
     soundEngine.stopCaughtVoice();
     this.speed = 0;
+    this.lateralVel = 0;
+    this.angularVel = 0;
     this.steerAngle = 0;
     this.yaw = 0;
+    this.pitchAngle = 0;
+    this.bounceHeight = 0;
+    this.bounceVel = 0;
     this.cameraShake = 0;
+    this.curbHitCooldown = 0;
     this.money = 0;
     this.health = 100;
     this.wantedLevel = 0;
@@ -786,54 +919,91 @@ export class DhakaGameEngine {
     this.distanceMeters = 0;
     this.bellCooldown = 0;
     this.turboTimer = 0;
+    this.lastPlayerGridX = 0;
+    this.lastPlayerGridZ = 0;
 
     this.rickshaw.root.position.set(0, 0, 0);
     this.rickshaw.root.rotation.set(0, 0, 0);
     this.rickshaw.chassisTilt.rotation.set(0, 0, 0);
+    this.rickshaw.chassisTilt.position.y = 0;
     this.rickshaw.steeringColumn.rotation.set(0, 0, 0);
     this.rickshaw.turboFlameL.visible = false;
     this.rickshaw.turboFlameR.visible = false;
+    this.cityGround.position.set(0, -0.02, 0);
+    if (this.skyDome) {
+      this.skyDome.position.set(0, 0, 0);
+    }
 
     for (const m of this.mobs) {
       this.scene.remove(m.rig.root);
     }
     this.mobs.length = 0;
 
-    for (let i = 0; i < this.segments.length; i++) {
-      const seg = this.segments[i];
-      const zCenter = HALF_SPAN - (i + 0.5) * SEGMENT_LENGTH;
-      seg.zCenter = zCenter;
-      seg.group.position.z = zCenter;
-      for (const st of seg.stalls) {
-        const keepClear = Math.abs(zCenter + st.localZOffset) < 14;
-        st.active = !keepClear;
-        st.mesh.visible = !keepClear;
+    // Reset 3x3 cell grid back around (0, 0)
+    let idx = 0;
+    for (let gz = -1; gz <= 1; gz++) {
+      for (let gx = -1; gx <= 1; gx++) {
+        const cell = this.cells[idx++];
+        cell.gridX = gx;
+        cell.gridZ = gz;
+        cell.xCenter = gx * CELL_SIZE;
+        cell.zCenter = gz * CELL_SIZE;
+        cell.group.position.set(cell.xCenter, 0, cell.zCenter);
+        cell.metroGroup.visible = gx === 0;
+        cell.crossingNameBn = this.getCrossingName(gx, gz);
+        cell.playerViolated = false;
+        cell.playerRewarded = false;
+        for (const st of cell.stalls) {
+          st.active = true;
+          st.mesh.visible = true;
+        }
       }
     }
 
-    for (let i = 0; i < this.traffic.length; i++) {
-      const tr = this.traffic[i];
-      tr.mesh.position.set(tr.laneX, 0, -25 - i * 35);
+    // Reset traffic properly per lane/axis, well spaced out and clear of (0,0) spawn intersection
+    let zNeg = 0;
+    let zPos = 0;
+    let xNeg = 0;
+    let xPos = 0;
+    for (const tr of this.traffic) {
+      tr.aveBase = 0;
+      tr.targetLaneOffset = tr.laneOffset;
       tr.currentSpeed = tr.baseSpeed;
       tr.nearMissAwarded = false;
       tr.hitCooldown = 0;
       tr.stoppedAtLight = false;
+
+      if (tr.axis === 'Z') {
+        const idxDir = tr.direction === -1 ? zNeg++ : zPos++;
+        const sign = idxDir % 2 === 0 ? -1 : 1;
+        const zOff = sign * (22 + Math.floor(idxDir / 2) * 20);
+        tr.mesh.position.set(tr.laneOffset, 0, zOff);
+        tr.mesh.rotation.y = tr.direction === -1 ? 0 : Math.PI;
+      } else {
+        const idxDir = tr.direction === -1 ? xNeg++ : xPos++;
+        const sign = idxDir % 2 === 0 ? -1 : 1;
+        const xOff = sign * (24 + Math.floor(idxDir / 2) * 24);
+        tr.mesh.position.set(xOff, 0, tr.laneOffset);
+        tr.mesh.rotation.y = tr.direction === 1 ? -Math.PI / 2 : Math.PI / 2;
+      }
     }
 
-    for (const inter of this.intersections) {
-      inter.playerViolated = false;
-      inter.playerRewarded = false;
-      inter.crossVehicleActive = false;
-      inter.crossVehicle.visible = false;
-      inter.crossVehicleX = -32;
-    }
     this.activeCrossingHudInfo = undefined;
 
+    const pickupStarts: Array<[number, number]> = [
+      [-3.5, -36],
+      [3.5, -82],
+      [-36, 3.2],
+      [48, -3.2],
+      [-3.2, 54],
+      [3.2, -124],
+    ];
     for (let i = 0; i < this.pickups.length; i++) {
       const p = this.pickups[i];
+      const [px, pz] = pickupStarts[i % pickupStarts.length];
       p.active = true;
       p.mesh.visible = true;
-      p.mesh.position.set((i % 2 === 0 ? -1 : 1) * 3.5, 0, -48 - i * 52);
+      p.mesh.position.set(px, 0, pz);
     }
   }
 
@@ -876,12 +1046,11 @@ export class DhakaGameEngine {
       }
     }
 
-    // Pedestrians also react to bell!
     for (const ped of this.pedestrians) {
-      const dx = ped.root.position.x - rx;
-      const dz = ped.root.position.z - rz;
+      const dx = ped.rig.root.position.x - rx;
+      const dz = ped.rig.root.position.z - rz;
       if (Math.hypot(dx, dz) < this.shockwaveMaxRadius) {
-        ped.direction = Math.sign(dz || 1);
+        ped.rig.direction = Math.sign((ped.axis === 'Z' ? dz : dx) || 1);
       }
     }
 
@@ -922,7 +1091,7 @@ export class DhakaGameEngine {
         'warning'
       );
 
-      const targetMobTotal = [0, 4, 8, 12, 16, 22][this.wantedLevel];
+      const targetMobTotal = [0, 4, 8, 12, 16, 20][this.wantedLevel];
       while (this.mobs.length < targetMobTotal) {
         this.spawnCrowdChaser(this.mobs.length);
       }
@@ -931,10 +1100,21 @@ export class DhakaGameEngine {
 
   private spawnCrowdChaser(seed: number): void {
     const rig = createMobModel(seed, this.textures);
-    const side = seed % 2 === 0 ? -1 : 1;
+    const rx = this.rickshaw.root.position.x;
     const rz = this.rickshaw.root.position.z;
-    const zOffset = seed % 3 === 0 ? 20 + (seed % 4) * 6 : -28 - (seed % 5) * 6;
-    rig.root.position.set(side * (6.6 + (seed % 3) * 0.7), 0, rz + zOffset);
+    const aveX = Math.round(rx / CELL_SIZE) * CELL_SIZE;
+    const aveZ = Math.round(rz / CELL_SIZE) * CELL_SIZE;
+    const flank = seed % 2 === 0 ? -1 : 1;
+
+    // Spawn on whichever corridor player is closest to
+    if (Math.abs(rx - aveX) <= Math.abs(rz - aveZ)) {
+      const zOff = seed % 3 === 0 ? 18 + (seed % 4) * 5 : -26 - (seed % 5) * 5;
+      rig.root.position.set(aveX + flank * (5.2 + (seed % 3) * 0.6), 0, rz + zOff);
+    } else {
+      const xOff = seed % 3 === 0 ? 18 + (seed % 4) * 5 : -26 - (seed % 5) * 5;
+      rig.root.position.set(rx + xOff, 0, aveZ + flank * (5.2 + (seed % 3) * 0.6));
+    }
+
     this.scene.add(rig.root);
     this.mobs.push({
       rig,
@@ -942,6 +1122,53 @@ export class DhakaGameEngine {
       knockVelX: 0,
       knockVelZ: 0,
     });
+  }
+
+  /**
+   * Immediately spawns angry shopkeepers/locals around ANY smashed stall anywhere in Dhaka
+   */
+  private spawnStallAngryMobs(sx: number, sz: number, isVeggie: boolean): void {
+    const count = isVeggie ? 3 : 2;
+    const rx = this.rickshaw.root.position.x;
+    const rz = this.rickshaw.root.position.z;
+    const relX = wrapCellLocal(sx);
+    const relZ = wrapCellLocal(sz);
+    const roadNudgeX = Math.abs(relX) < 12 ? -Math.sign(relX || 1) * 1.6 : 0;
+    const roadNudgeZ = Math.abs(relZ) < 12 ? -Math.sign(relZ || 1) * 1.6 : 0;
+
+    for (let k = 0; k < count; k++) {
+      const spawnX = sx + roadNudgeX + (k - 0.5) * 1.4;
+      const spawnZ = sz + roadNudgeZ + (k % 2 === 0 ? -1.1 : 1.1);
+
+      if (this.mobs.length < 26) {
+        const rig = createMobModel(this.stallsSmashed * 5 + k, this.textures);
+        rig.root.position.set(spawnX, 0, spawnZ);
+        this.scene.add(rig.root);
+        this.mobs.push({
+          rig,
+          stunTimer: 0,
+          knockVelX: 0,
+          knockVelZ: 0,
+        });
+      } else {
+        // Recycle the farthest active mob to surge from this freshly smashed stall
+        let farthestIdx = 0;
+        let maxDist = -1;
+        for (let i = 0; i < this.mobs.length; i++) {
+          const p = this.mobs[i].rig.root.position;
+          const d = (p.x - rx) * (p.x - rx) + (p.z - rz) * (p.z - rz);
+          if (d > maxDist) {
+            maxDist = d;
+            farthestIdx = i;
+          }
+        }
+        const m = this.mobs[farthestIdx];
+        m.rig.root.position.set(spawnX, 0, spawnZ);
+        m.stunTimer = 0;
+        m.knockVelX = 0;
+        m.knockVelZ = 0;
+      }
+    }
   }
 
   private spawnDebrisBurst(worldX: number, worldY: number, worldZ: number, count: number): void {
@@ -1111,27 +1338,60 @@ export class DhakaGameEngine {
       this.camera.lookAt(rx, 1.2, rz);
     }
 
-    // Shadow light tracking player
     const px = this.rickshaw.root.position.x;
     const pz = this.rickshaw.root.position.z;
-    this.sunLight.target.position.set(px, 0, pz - 8);
+    if (this.skyDome) {
+      this.skyDome.position.set(px, 0, pz);
+    }
+    this.sunLight.target.position.set(px, 0, pz);
     this.sunLight.position.set(
       px + this.sunOffset.x,
       this.sunOffset.y,
       pz + this.sunOffset.z
     );
 
+    if (this.phase !== GamePhase.PAUSED) {
+      this.updateClouds(dt, px, pz);
+      this.updateAmbientMotes(dt, px, pz);
+    }
+
     this.renderer.render(this.scene, this.camera);
     this.scheduleNextFrame();
   };
 
+  private updateClouds(dt: number, rx: number, rz: number): void {
+    this.cloudGroup.position.y = 0;
+    for (const c of this.clouds) {
+      c.mesh.position.x += c.speed * dt;
+      if (c.mesh.position.x - rx > 144) c.mesh.position.x -= 288;
+      else if (c.mesh.position.x - rx < -144) c.mesh.position.x += 288;
+
+      if (c.mesh.position.z - rz > 144) c.mesh.position.z -= 288;
+      else if (c.mesh.position.z - rz < -144) c.mesh.position.z += 288;
+    }
+  }
+
+  private updateAmbientMotes(dt: number, rx: number, rz: number): void {
+    if (!this.ambientMotes) return;
+    this.ambientMotes.position.set(rx, 0, rz);
+    const arr = this.ambientMotesPos;
+    const breezeX = this.weather === 'CLOUDY' ? 1.8 : 0.65;
+    const fallY = this.weather === 'CLOUDY' ? -0.9 : -0.22;
+    for (let i = 0; i < this.moteCount; i++) {
+      const idx = i * 3;
+      arr[idx] += breezeX * dt;
+      arr[idx + 1] += fallY * dt;
+      if (arr[idx] > 28) arr[idx] -= 56;
+      if (arr[idx + 1] < 0.4) arr[idx + 1] = 14.5;
+    }
+    (this.ambientMotes.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+  }
+
   private updateMenuShowcase(dt: number, elapsed: number): void {
-    // Elegant front-facing showcase camera swing: smoothly sways between left and right front angles
-    // directly showcasing Obaidul Quader's face, sunglasses, white panjabi, and decorated rickshaw
     const swing = Math.sin(elapsed * 0.42) * 0.65;
     const radius = 4.1;
     const camX = Math.sin(swing) * radius;
-    const camZ = -Math.cos(swing) * radius - 0.35; // Positioned in front (-Z)
+    const camZ = -Math.cos(swing) * radius - 0.35;
     const camY = 1.9 + Math.sin(elapsed * 0.75) * 0.12;
 
     this.camera.position.set(camX, camY, camZ);
@@ -1144,6 +1404,7 @@ export class DhakaGameEngine {
       this.rickshaw.bellMesh.rotation.z = 0;
     }
 
+    this.updateIntersections(dt, false);
     this.updateTraffic(dt, false);
     this.updatePedestrians(dt, elapsed);
   }
@@ -1153,6 +1414,9 @@ export class DhakaGameEngine {
 
     if (this.bellCooldown > 0) {
       this.bellCooldown = Math.max(0, this.bellCooldown - dt);
+    }
+    if (this.curbHitCooldown > 0) {
+      this.curbHitCooldown = Math.max(0, this.curbHitCooldown - dt);
     }
     if (this.turboTimer > 0) {
       this.turboTimer = Math.max(0, this.turboTimer - dt);
@@ -1180,70 +1444,143 @@ export class DhakaGameEngine {
       this.rickshaw.turboFlameR.scale.set(1, 1, flicker);
     }
 
-    // Vehicle longitudinal acceleration
-    const maxForwardSpeed = (isTurbo ? 32 : 23.5) * profile.topSpeedBonus;
-    const maxReverseSpeed = -7.5;
-    const accel = isTurbo ? 29 : 18.5;
+    // Upgraded 2D Driving & Grip Physics (torque taper, aerodynamic drag, tire slip, weight transfer & suspension bounce)
+    const maxForwardSpeed = (isTurbo ? 33.5 : 24.5) * profile.topSpeedBonus;
+    const maxReverseSpeed = -7.8;
+    const speedRatio = Math.min(Math.abs(this.speed) / maxForwardSpeed, 1.0);
+    const launchTorque = (isTurbo ? 34 : 21.5) * (1.18 - speedRatio * 0.48);
 
+    let targetPitch = 0;
     if (this.input.forward) {
-      this.speed = Math.min(this.speed + accel * dt, maxForwardSpeed);
+      this.speed = Math.min(this.speed + launchTorque * this.roadGrip * dt, maxForwardSpeed);
+      targetPitch = 0.045 * (1.1 - speedRatio * 0.5); // Rearward squat under throttle
     } else if (this.input.backward) {
-      this.speed = Math.max(this.speed - 15 * dt, maxReverseSpeed);
+      this.speed = Math.max(this.speed - 17.5 * this.roadGrip * dt, maxReverseSpeed);
+      targetPitch = this.speed > 0.5 ? -0.065 : -0.025; // Forward brake dive
     } else {
-      this.speed = THREE.MathUtils.damp(this.speed, 0, 2.2, dt);
+      const coastDrag = 1.65 + 0.022 * this.speed * this.speed * 0.1;
+      this.speed = THREE.MathUtils.damp(this.speed, 0, coastDrag, dt);
     }
 
     if (this.input.brake) {
-      this.speed = THREE.MathUtils.damp(this.speed, 0, 7.8, dt);
+      this.speed = THREE.MathUtils.damp(this.speed, 0, 5.4 * this.roadGrip, dt);
+      if (Math.abs(this.speed) > 1.5) {
+        targetPitch = -0.08;
+      }
     }
 
-    // Steering
-    const targetSteer = (this.input.left ? 1 : 0) - (this.input.right ? 1 : 0);
-    const steerMax = (this.input.brake ? 0.65 : 0.48) * profile.steerResponseBonus;
-    this.steerAngle = THREE.MathUtils.damp(this.steerAngle, targetSteer * steerMax, 11, dt);
+    // Progressive steering curve + smooth angular velocity + handbrake drift slip
+    const steerInput = (this.input.left ? 1 : 0) - (this.input.right ? 1 : 0);
+    const highSpeedTaper = 1.0 - Math.min(Math.abs(this.speed) / 36, 0.32);
+    const steerMax = (this.input.brake ? 0.62 : 0.46) * highSpeedTaper * profile.steerResponseBonus;
+    this.steerAngle = THREE.MathUtils.damp(this.steerAngle, steerInput * steerMax, 12.5, dt);
 
-    const speedFactor = Math.min(Math.abs(this.speed) / 6.5, 1.0);
+    const speedFactor = Math.min(Math.abs(this.speed) / 5.5, 1.0);
     const dirSign = this.speed >= -0.05 ? 1 : -1;
-    const turnRate = this.input.brake ? 2.95 : 2.25;
-    this.yaw += this.steerAngle * speedFactor * dirSign * turnRate * dt;
+    const isDrifting = this.input.brake && Math.abs(this.speed) > 7.5 && Math.abs(this.steerAngle) > 0.06;
+    const turnAuthority = isDrifting ? 3.25 : 2.35;
+    const targetAngVel = this.steerAngle * speedFactor * dirSign * turnAuthority;
+    this.angularVel = THREE.MathUtils.damp(this.angularVel, targetAngVel, 14, dt);
+    this.yaw += this.angularVel * dt;
 
-    const moveStep = this.speed * dt;
-    this.rickshaw.root.position.x -= Math.sin(this.yaw) * moveStep;
-    this.rickshaw.root.position.z -= Math.cos(this.yaw) * moveStep;
+    // Centrifugal lateral slip transfer (stronger drift tail-out on SPACE brake or cloudy wet tarmac)
+    const centrifugalForce = this.angularVel * this.speed * 0.38;
+    const gripDecay = isDrifting ? 3.2 : 9.8 * this.roadGrip;
+    this.lateralVel += (centrifugalForce - this.lateralVel * gripDecay) * dt;
+    this.lateralVel = THREE.MathUtils.clamp(this.lateralVel, -10.5, 10.5);
+
+    const sinY = Math.sin(this.yaw);
+    const cosY = Math.cos(this.yaw);
+    const fwdStep = this.speed * dt;
+    const latStep = this.lateralVel * dt;
+
+    this.rickshaw.root.position.x -= sinY * fwdStep - cosY * latStep;
+    this.rickshaw.root.position.z -= cosY * fwdStep + sinY * latStep;
     this.rickshaw.root.rotation.y = this.yaw;
 
-    this.distanceMeters += Math.abs(moveStep);
+    this.distanceMeters += Math.hypot(fwdStep, latStep);
     if (this.distanceMeters > 75 && this.speed > 8) {
       soundEngine.playDrivingMilonVoice();
     }
 
-    // Wall / Curb Collision
-    if (Math.abs(this.rickshaw.root.position.x) > ROAD_HALF_LIMIT) {
-      const sign = Math.sign(this.rickshaw.root.position.x);
-      this.rickshaw.root.position.x = sign * ROAD_HALF_LIMIT;
-      if (Math.abs(this.speed) > 8) {
-        this.speed *= 0.72;
+    // Seamless Infinite 2D City Grid Curb & Building Boundary Check with elastic glance
+    const rx = this.rickshaw.root.position.x;
+    const rz = this.rickshaw.root.position.z;
+
+    if (this.cityGround) {
+      this.cityGround.position.set(rx, -0.02, rz);
+    }
+
+    const relX = wrapCellLocal(rx);
+    const relZ = wrapCellLocal(rz);
+    const cellCenterX = rx - relX;
+    const cellCenterZ = rz - relZ;
+
+    if (Math.abs(relX) > ROAD_HALF_DRIVABLE && Math.abs(relZ) > ROAD_HALF_DRIVABLE) {
+      const penX = Math.abs(relX) - ROAD_HALF_DRIVABLE;
+      const penZ = Math.abs(relZ) - ROAD_HALF_DRIVABLE;
+
+      if (penX < penZ) {
+        this.rickshaw.root.position.x = cellCenterX + Math.sign(relX) * ROAD_HALF_DRIVABLE;
+        this.lateralVel *= -0.45;
+      } else {
+        this.rickshaw.root.position.z = cellCenterZ + Math.sign(relZ) * ROAD_HALF_DRIVABLE;
+        this.lateralVel *= -0.45;
+      }
+
+      if (Math.abs(this.speed) > 7 && this.curbHitCooldown <= 0) {
+        this.curbHitCooldown = 0.42;
+        this.speed *= 0.76;
+        this.bounceVel += 1.6;
         this.cameraShake = Math.max(this.cameraShake, 0.22);
-        this.spawnDebrisBurst(this.rickshaw.root.position.x, 0.5, this.rickshaw.root.position.z, 6);
+        this.spawnDebrisBurst(
+          this.rickshaw.root.position.x,
+          0.5,
+          this.rickshaw.root.position.z,
+          5
+        );
         soundEngine.playHit();
         soundEngine.playCrashVoice();
       }
-      this.yaw *= 0.85;
     }
 
-    // Visual Tilts & Wheels
+    // District Transition Banner when entering a new 96m super-cell
+    const gridX = Math.round(rx / CELL_SIZE);
+    const gridZ = Math.round(rz / CELL_SIZE);
+    if (gridX !== this.lastPlayerGridX || gridZ !== this.lastPlayerGridZ) {
+      this.lastPlayerGridX = gridX;
+      this.lastPlayerGridZ = gridZ;
+      const areaName = this.getDistrictName(gridX, gridZ);
+      this.emitPopup(`📍 ${areaName}`, 'অসীম ঢাকা শহর — সব দিকে রাস্তা ও ট্রাফিক!', 'turbo');
+    }
+
+    // Suspension Spring-Damper, Body Roll & Pitch Weight Transfer
+    const springK = 140;
+    const damperC = 15;
+    const springAccel = -springK * this.bounceHeight - damperC * this.bounceVel;
+    this.bounceVel += springAccel * dt;
+    this.bounceHeight = THREE.MathUtils.clamp(this.bounceHeight + this.bounceVel * dt, -0.08, 0.26);
+
     this.rickshaw.steeringColumn.rotation.y = this.steerAngle * 0.95;
-    const lateralRoll = -this.steerAngle * (this.speed / 22) * 0.22;
-    const roadBump = Math.sin(this.distanceMeters * 2.8) * Math.min(Math.abs(this.speed) / 25, 1) * 0.015;
+    const lateralRoll = THREE.MathUtils.clamp(
+      -this.angularVel * (Math.abs(this.speed) / 26) * 0.085 - this.lateralVel * 0.025,
+      -0.28,
+      0.28
+    );
+    this.pitchAngle = THREE.MathUtils.damp(this.pitchAngle, targetPitch, 9.5, dt);
+    const roadBump =
+      Math.sin(this.distanceMeters * 2.8) * Math.min(Math.abs(this.speed) / 25, 1) * 0.015;
+
     this.rickshaw.chassisTilt.rotation.z = THREE.MathUtils.damp(
       this.rickshaw.chassisTilt.rotation.z,
       lateralRoll,
-      10,
+      11,
       dt
     );
-    this.rickshaw.chassisTilt.position.y = roadBump;
+    this.rickshaw.chassisTilt.rotation.x = this.pitchAngle;
+    this.rickshaw.chassisTilt.position.y = Math.max(0, roadBump + this.bounceHeight);
 
-    const wheelDelta = moveStep / 0.44;
+    const wheelDelta = fwdStep / 0.44;
     this.wheelSpin -= wheelDelta;
     this.rickshaw.frontWheel.rotation.x = this.wheelSpin;
     this.rickshaw.rearWheelL.rotation.x = this.wheelSpin;
@@ -1257,8 +1594,8 @@ export class DhakaGameEngine {
       this.driver.headGroup.rotation.y = this.steerAngle * 0.55;
     }
 
-    this.recycleRoadSegments();
-    this.updateIntersections(dt);
+    this.recycleWorldCells();
+    this.updateIntersections(dt, true);
     this.checkStallCollisions();
     this.updatePickups(dt, elapsed);
     this.updateTraffic(dt, true);
@@ -1275,107 +1612,121 @@ export class DhakaGameEngine {
     }
   }
 
-  private updateIntersections(dt: number): void {
+  private recycleWorldCells(): void {
     const rx = this.rickshaw.root.position.x;
     const rz = this.rickshaw.root.position.z;
+
+    for (const cell of this.cells) {
+      let moved = false;
+
+      if (cell.xCenter - rx > HALF_GRID_SPAN) {
+        cell.gridX -= GRID_SIZE;
+        cell.xCenter -= GRID_SIZE * CELL_SIZE;
+        moved = true;
+      } else if (cell.xCenter - rx < -HALF_GRID_SPAN) {
+        cell.gridX += GRID_SIZE;
+        cell.xCenter += GRID_SIZE * CELL_SIZE;
+        moved = true;
+      }
+
+      if (cell.zCenter - rz > HALF_GRID_SPAN) {
+        cell.gridZ -= GRID_SIZE;
+        cell.zCenter -= GRID_SIZE * CELL_SIZE;
+        moved = true;
+      } else if (cell.zCenter - rz < -HALF_GRID_SPAN) {
+        cell.gridZ += GRID_SIZE;
+        cell.zCenter += GRID_SIZE * CELL_SIZE;
+        moved = true;
+      }
+
+      if (moved) {
+        cell.group.position.set(cell.xCenter, 0, cell.zCenter);
+        cell.metroGroup.visible = cell.gridX === 0;
+        cell.crossingNameBn = this.getCrossingName(cell.gridX, cell.gridZ);
+        cell.playerViolated = false;
+        cell.playerRewarded = false;
+        for (const st of cell.stalls) {
+          st.active = true;
+          st.mesh.visible = true;
+        }
+      }
+    }
+  }
+
+  private updateIntersections(dt: number, checkRules: boolean): void {
+    const rx = this.rickshaw.root.position.x;
+    const rz = this.rickshaw.root.position.z;
+    const fwdX = -Math.sin(this.yaw);
+    const fwdZ = -Math.cos(this.yaw);
+    const headingXDominant = Math.abs(fwdX) > Math.abs(fwdZ);
 
     let closestUpcomingDist = Infinity;
     let activeHudInfo: TrafficSignalHudInfo | undefined;
 
-    for (const inter of this.intersections) {
-      // 1. Advance state timer
-      inter.timer -= dt;
-      if (inter.timer <= 0) {
-        if (inter.state === 'RED') {
-          inter.state = 'GREEN';
-          inter.timer = 8.5;
-        } else if (inter.state === 'GREEN') {
-          inter.state = 'YELLOW';
-          inter.timer = 2.5;
+    for (const cell of this.cells) {
+      cell.timer -= dt;
+      if (cell.timer <= 0) {
+        if (cell.state === 'RED') {
+          cell.state = 'GREEN';
+          cell.timer = 8.5;
+        } else if (cell.state === 'GREEN') {
+          cell.state = 'YELLOW';
+          cell.timer = 2.5;
         } else {
-          inter.state = 'RED';
-          inter.timer = 8.0;
-          inter.playerViolated = false;
-          inter.playerRewarded = false;
+          cell.state = 'RED';
+          cell.timer = 8.0;
+          cell.playerViolated = false;
+          cell.playerRewarded = false;
         }
-        inter.lightRig.setSignal(inter.state);
+        cell.lightRig.setSignal(cell.state);
       }
 
-      // 2. Cross-Traffic Vehicle during RED
-      const interZ = inter.group.position.z;
-      if (inter.state === 'RED') {
-        inter.crossVehicleActive = true;
-        inter.crossVehicle.visible = true;
-        inter.crossVehicleX += inter.crossVehicleSpeed * dt;
-        inter.crossVehicle.position.x = inter.crossVehicleX;
+      if (!checkRules) continue;
 
-        if (inter.crossVehicleX > 32) {
-          inter.crossVehicleX = -32;
-          inter.crossVehicleSpeed = 14 + Math.random() * 5.0;
-        }
+      const onThisCorridor = headingXDominant
+        ? Math.abs(rz - cell.zCenter) < 9.0
+        : Math.abs(rx - cell.xCenter) < 9.0;
+      if (!onThisCorridor) continue;
 
-        // Check collision between player and crossing vehicle
-        const cdx = rx - inter.crossVehicleX;
-        const cdz = rz - interZ;
-        if (cdx * cdx + cdz * cdz < 14.5 && this.phase === GamePhase.PLAYING) {
-          this.speed = -8.0;
-          this.applyDamage(22);
-          this.cameraShake = Math.max(this.cameraShake, 0.65);
-          this.spawnDebrisBurst(rx, 0.8, rz, 14);
-          soundEngine.playHit();
-          soundEngine.playCrashVoice();
+      const ahead = (cell.xCenter - rx) * fwdX + (cell.zCenter - rz) * fwdZ;
+      const distToStop = ahead - 11.8;
+
+      // Cross-street gets opposite signal to main N-S gantry
+      const effectiveState: SignalColor = headingXDominant
+        ? cell.state === 'RED'
+          ? 'GREEN'
+          : 'RED'
+        : cell.state;
+
+      if (distToStop > -8 && distToStop < 45 && distToStop < closestUpcomingDist) {
+        closestUpcomingDist = distToStop;
+        activeHudInfo = {
+          state: effectiveState,
+          secondsRemaining: Math.max(1, Math.ceil(cell.timer)),
+          distanceToStopLine: Math.max(0, Math.round(distToStop)),
+          crossingNameBn: cell.crossingNameBn,
+        };
+      }
+
+      // Signal Obedience Reward
+      if (effectiveState === 'RED' && distToStop >= 0.5 && distToStop <= 13) {
+        if (Math.abs(this.speed) < 1.5 && !cell.playerRewarded && cell.timer <= 0.8) {
+          cell.playerRewarded = true;
+          this.addMoney(1500);
+          this.wantedLevel = Math.max(0, this.wantedLevel - 1);
+          soundEngine.playTrafficComplianceChime();
           this.emitPopup(
-            'ক্রস-ট্রাফিক বাসের সাথে সংঘর্ষ!',
-            'লাল বাতিতে পার হতে গিয়ে ধাক্কা!',
-            'warning'
+            '🏆 ট্রাফিক নিয়ম মানার পুরস্কার! +৳১,৫০০',
+            'সিগন্যালে দাঁড়ানোয় জ্যাম কমেছে!',
+            'cash'
           );
         }
-      } else {
-        inter.crossVehicleActive = false;
-        inter.crossVehicle.visible = false;
-        inter.crossVehicleX = -32;
       }
 
-      // 3. Player Traffic Signal Rules
-      const stopLineZ = interZ + 6.0;
-      const distToStop = rz - stopLineZ; // positive if player is approaching from positive Z
-
-      // Determine if this is the closest upcoming intersection ahead of player
-      if (distToStop > -10 && distToStop < 55) {
-        if (distToStop < closestUpcomingDist) {
-          closestUpcomingDist = distToStop;
-          activeHudInfo = {
-            state: inter.state,
-            secondsRemaining: Math.max(1, Math.ceil(inter.timer)),
-            distanceToStopLine: Math.max(0, Math.round(distToStop)),
-            crossingNameBn: inter.crossingNameBn,
-          };
-        }
-      }
-
-      // Stop Line Obedience Reward:
-      // If RED and player has braked and stopped before stop line (dist in [0.5, 14], |speed| < 1.5)
-      if (inter.state === 'RED' && distToStop >= 0.5 && distToStop <= 14) {
-        if (Math.abs(this.speed) < 1.5 && !inter.playerRewarded) {
-          if (inter.timer <= 0.8) {
-            inter.playerRewarded = true;
-            this.addMoney(1500);
-            this.wantedLevel = Math.max(0, this.wantedLevel - 1);
-            soundEngine.playTrafficComplianceChime();
-            this.emitPopup(
-              '🏆 ট্রাফিক নিয়ম মানার পুরস্কার! +৳১,৫০০',
-              'সিগন্যালে দাঁড়ানোয় জ্যাম কমেছে!',
-              'cash'
-            );
-          }
-        }
-      }
-
-      // Red Light Running Violation:
-      // If player crosses the stop line (distToStop < 0 and > -9) while light is RED at speed
-      if (inter.state === 'RED' && distToStop < 0 && distToStop > -9) {
-        if (this.speed > 3.2 && !inter.playerViolated) {
-          inter.playerViolated = true;
+      // Red Light Running Violation
+      if (effectiveState === 'RED' && distToStop < 0 && distToStop > -8.0) {
+        if (this.speed > 4.2 && !cell.playerViolated) {
+          cell.playerViolated = true;
           soundEngine.playTrafficWhistle();
           this.wantedLevel = Math.min(5, this.wantedLevel + 1);
           const fine = Math.min(this.money, 1000);
@@ -1393,54 +1744,17 @@ export class DhakaGameEngine {
     this.activeCrossingHudInfo = activeHudInfo;
   }
 
-  private recycleRoadSegments(): void {
-    const playerZ = this.rickshaw.root.position.z;
-    for (const seg of this.segments) {
-      const dz = seg.zCenter - playerZ;
-      if (dz > HALF_SPAN) {
-        seg.zCenter -= NUM_SEGMENTS * SEGMENT_LENGTH;
-        seg.group.position.z = seg.zCenter;
-        this.respawnSegmentStalls(seg);
-        if (seg.intersection) {
-          seg.intersection.playerViolated = false;
-          seg.intersection.playerRewarded = false;
-          seg.intersection.crossVehicleActive = false;
-          seg.intersection.crossVehicle.visible = false;
-          seg.intersection.crossVehicleX = -32;
-        }
-      } else if (dz < -HALF_SPAN) {
-        seg.zCenter += NUM_SEGMENTS * SEGMENT_LENGTH;
-        seg.group.position.z = seg.zCenter;
-        this.respawnSegmentStalls(seg);
-        if (seg.intersection) {
-          seg.intersection.playerViolated = false;
-          seg.intersection.playerRewarded = false;
-          seg.intersection.crossVehicleActive = false;
-          seg.intersection.crossVehicle.visible = false;
-          seg.intersection.crossVehicleX = -32;
-        }
-      }
-    }
-  }
-
-  private respawnSegmentStalls(seg: RoadSegment): void {
-    for (const st of seg.stalls) {
-      st.active = true;
-      st.mesh.visible = true;
-    }
-  }
-
   private checkStallCollisions(): void {
     const rx = this.rickshaw.root.position.x;
     const rz = this.rickshaw.root.position.z;
 
-    for (const seg of this.segments) {
-      if (Math.abs(seg.zCenter - rz) > SEGMENT_LENGTH) continue;
+    for (const cell of this.cells) {
+      if (Math.abs(cell.xCenter - rx) > 58 || Math.abs(cell.zCenter - rz) > 58) continue;
 
-      for (const st of seg.stalls) {
+      for (const st of cell.stalls) {
         if (!st.active) continue;
-        const sx = st.localSide * 7.55;
-        const sz = seg.zCenter + st.localZOffset;
+        const sx = cell.xCenter + st.localX;
+        const sz = cell.zCenter + st.localZ;
         const dx = rx - sx;
         const dz = rz - sz;
 
@@ -1452,28 +1766,50 @@ export class DhakaGameEngine {
           this.comboTimer = COMBO_WINDOW_SEC;
           this.stallsSmashed++;
 
-          const baseEarned = st.isVeggie ? 15000 : 10000;
+          const cat = st.category ?? (st.isVeggie ? 'veggie' : 'chai');
+          const baseEarned = cat === 'veggie' || cat === 'flower' ? 15000 : 10000;
           const earned = baseEarned * this.combo;
           this.addMoney(earned);
 
-          if (st.isVeggie) {
+          if (cat === 'veggie') {
             soundEngine.playVeggieSmash();
             this.emitPopup(
               `+৳${earned.toLocaleString('en-IN')}`,
               this.combo > 1 ? `${this.combo}x কম্বো! তাজা সবজি সাফ!` : 'সবজির আড়ৎ সাফ!',
               'veggie'
             );
+          } else if (cat === 'flower') {
+            soundEngine.playVeggieSmash();
+            this.emitPopup(
+              `+৳${earned.toLocaleString('en-IN')}`,
+              this.combo > 1 ? `${this.combo}x কম্বো! ফুলের দোকান সাফ!` : '🌸 ফুলের দোকান সাফ!',
+              'veggie'
+            );
+          } else if (cat === 'chai') {
+            soundEngine.playSmash(this.combo);
+            this.emitPopup(
+              `+৳${earned.toLocaleString('en-IN')}`,
+              this.combo > 1 ? `${this.combo}x কম্বো! চায়ের টং সাফ!` : '☕ চায়ের টং সাফ!',
+              'cash'
+            );
           } else {
             soundEngine.playSmash(this.combo);
             this.emitPopup(
               `+৳${earned.toLocaleString('en-IN')}`,
-              this.combo > 1 ? `${this.combo}x কম্বো!` : 'দোকান সাফ!',
+              this.combo > 1 ? `${this.combo}x কম্বো! হকার ভ্যান সাফ!` : '🛒 হকার ভ্যান সাফ!',
               'cash'
             );
           }
 
-          this.cameraShake = Math.max(this.cameraShake, 0.32);
-          this.spawnDebrisBurst(sx, 0.9, sz, st.isVeggie ? 24 : 16);
+          this.cameraShake = Math.max(this.cameraShake, 0.34);
+          this.bounceVel += 2.4;
+          this.spawnDebrisBurst(sx, 0.9, sz, st.isVeggie ? 22 : 15);
+          this.spawnStallAngryMobs(sx, sz, st.isVeggie);
+          const stallWanted = Math.min(5, Math.ceil(this.stallsSmashed / 3));
+          if (stallWanted > this.wantedLevel) {
+            this.wantedLevel = stallWanted;
+            soundEngine.playWantedUp(this.wantedLevel);
+          }
           soundEngine.playCrashVoice();
           this.emitHudSnapshot();
         }
@@ -1484,15 +1820,30 @@ export class DhakaGameEngine {
   private updatePickups(dt: number, elapsed: number): void {
     const rx = this.rickshaw.root.position.x;
     const rz = this.rickshaw.root.position.z;
+    const aveX = Math.round(rx / CELL_SIZE) * CELL_SIZE;
+    const aveZ = Math.round(rz / CELL_SIZE) * CELL_SIZE;
 
-    for (const p of this.pickups) {
-      if (p.mesh.position.z - rz > 35) {
-        p.mesh.position.z = rz - 140 - Math.random() * 65;
-        p.mesh.position.x = (Math.random() - 0.5) * 11;
-        p.active = true;
-        p.mesh.visible = true;
-      } else if (rz - p.mesh.position.z > 210) {
-        p.mesh.position.z = rz + 120 + Math.random() * 45;
+    for (let i = 0; i < this.pickups.length; i++) {
+      const p = this.pickups[i];
+      const dist = Math.hypot(p.mesh.position.x - rx, p.mesh.position.z - rz);
+
+      if (dist > 125) {
+        const useNS = i % 2 === 0;
+        const laneOff = (Math.random() - 0.5) * 9.0;
+        const aheadSign = Math.random() < 0.7 ? -1 : 1;
+        if (useNS) {
+          p.mesh.position.set(
+            aveX + laneOff,
+            0,
+            rz + aheadSign * (55 + Math.random() * 55)
+          );
+        } else {
+          p.mesh.position.set(
+            rx + aheadSign * (55 + Math.random() * 55),
+            0,
+            aveZ + laneOff
+          );
+        }
         p.active = true;
         p.mesh.visible = true;
       }
@@ -1526,119 +1877,307 @@ export class DhakaGameEngine {
   private updateTraffic(dt: number, checkCollision: boolean): void {
     const rx = this.rickshaw.root.position.x;
     const rz = this.rickshaw.root.position.z;
+    const nearestAveX = Math.round(rx / CELL_SIZE) * CELL_SIZE;
+    const nearestAveZ = Math.round(rz / CELL_SIZE) * CELL_SIZE;
 
     for (const tr of this.traffic) {
       let targetSpeed = tr.baseSpeed;
       let shouldStop = false;
 
-      // 1. Check intersections for RED or YELLOW signals
-      for (const inter of this.intersections) {
-        if (inter.state === 'RED' || inter.state === 'YELLOW') {
-          const interZ = inter.group.position.z;
-          if (tr.direction === -1) {
-            // Moving towards -Z (same direction as player)
-            const stopLineZ = interZ + 6.0;
-            const dist = tr.mesh.position.z - stopLineZ;
-            if (dist > 0.4 && dist < 24) {
-              shouldStop = true;
-              break;
-            }
-          } else {
-            // Moving towards +Z (oncoming traffic)
-            const stopLineZ = interZ - 6.0;
-            const dist = stopLineZ - tr.mesh.position.z;
-            if (dist > 0.4 && dist < 24) {
-              shouldStop = true;
-              break;
+      if (tr.axis === 'Z') {
+        // Check active intersection cells on this N-S avenue using vehicle front bumper to stop line (±11.8m)
+        for (const cell of this.cells) {
+          if (Math.abs(cell.xCenter - tr.aveBase) > 10) continue;
+          if (cell.state === 'RED' || cell.state === 'YELLOW') {
+            if (tr.direction === -1) {
+              const distToStop = tr.mesh.position.z - tr.halfLen - (cell.zCenter + 11.8);
+              if (distToStop > 0.3 && distToStop < 14.0) {
+                shouldStop = true;
+                break;
+              }
+            } else {
+              const distToStop = cell.zCenter - 11.8 - (tr.mesh.position.z + tr.halfLen);
+              if (distToStop > 0.3 && distToStop < 14.0) {
+                shouldStop = true;
+                break;
+              }
             }
           }
         }
-      }
 
-      // 2. Queueing behind vehicle ahead in same lane
-      if (!shouldStop) {
+        // Bumper-to-bumper Queueing & Overtaking along Z
+        if (tr.overtakeCooldown > 0) tr.overtakeCooldown -= dt;
+        let blockedAhead = false;
+        let leadingGap = Infinity;
+
         for (const other of this.traffic) {
-          if (other === tr) continue;
-          if (other.direction === tr.direction && Math.abs(other.laneX - tr.laneX) < 1.4) {
-            const relDist = (other.mesh.position.z - tr.mesh.position.z) * tr.direction;
-            if (relDist > 1.2 && relDist < 6.8 && other.currentSpeed < 3.0) {
-              shouldStop = true;
-              break;
+          if (other === tr || other.axis !== 'Z') continue;
+          if (
+            Math.abs(other.aveBase - tr.aveBase) < 10 &&
+            other.direction === tr.direction &&
+            Math.abs(other.laneOffset - tr.laneOffset) < 1.5
+          ) {
+            const centerDist = (other.mesh.position.z - tr.mesh.position.z) * tr.direction;
+            const bumperGap = centerDist - (tr.halfLen + other.halfLen);
+            if (bumperGap > -1.0 && bumperGap < 12.0) {
+              if (bumperGap < leadingGap) leadingGap = bumperGap;
+              if (other.currentSpeed < tr.baseSpeed - 1.2 || bumperGap < 7.0) {
+                blockedAhead = true;
+              }
             }
           }
         }
+
+        if (blockedAhead && tr.overtakeCooldown <= 0 && tr.vehicleType !== 'rickshaw') {
+          const lanes = tr.direction === -1 ? [-1.8, -3.6, -5.0] : [1.8, 3.6, 5.0];
+          for (const cand of lanes) {
+            if (Math.abs(cand - tr.targetLaneOffset) > 0.5) {
+              let occupied = false;
+              for (const other of this.traffic) {
+                if (other === tr || other.axis !== 'Z') continue;
+                if (
+                  Math.abs(other.aveBase - tr.aveBase) < 10 &&
+                  other.direction === tr.direction &&
+                  Math.abs(other.laneOffset - cand) < 1.4 &&
+                  Math.abs(other.mesh.position.z - tr.mesh.position.z) < tr.halfLen + other.halfLen + 3.5
+                ) {
+                  occupied = true;
+                  break;
+                }
+              }
+              if (!occupied) {
+                tr.targetLaneOffset = cand;
+                tr.overtakeCooldown = 4.5 + Math.random() * 5.0;
+                break;
+              }
+            }
+          }
+        }
+
+        shouldStop = shouldStop || (blockedAhead && leadingGap < 2.2);
+        tr.stoppedAtLight = shouldStop;
+        targetSpeed = shouldStop
+          ? 0
+          : blockedAhead
+          ? Math.min(tr.baseSpeed * 0.65, 5.0)
+          : Math.max(3.5, tr.baseSpeed + Math.sin(tr.swayPhase) * 0.8);
+
+        if (tr.currentSpeed > targetSpeed) {
+          tr.currentSpeed = Math.max(targetSpeed, tr.currentSpeed - 15.0 * dt);
+        } else if (tr.currentSpeed < targetSpeed) {
+          tr.currentSpeed = Math.min(targetSpeed, tr.currentSpeed + 6.0 * dt);
+        }
+
+        tr.laneOffset = THREE.MathUtils.damp(tr.laneOffset, tr.targetLaneOffset, 3.2, dt);
+        tr.mesh.position.x = tr.aveBase + tr.laneOffset;
+        tr.mesh.position.z += tr.direction * tr.currentSpeed * dt;
+        const deltaLane = tr.targetLaneOffset - tr.laneOffset;
+        tr.mesh.rotation.y =
+          tr.direction === -1 ? deltaLane * 0.12 : Math.PI - deltaLane * 0.12;
+
+        // Migrate onto nearest N-S avenue only when far away in 2D fog (>85m) or beyond 118m longitudinal span
+        const dzPlayer = tr.mesh.position.z - rz;
+        const d2d = Math.hypot(tr.mesh.position.x - rx, dzPlayer);
+        if (Math.abs(tr.aveBase - nearestAveX) > 10 && d2d > 85) {
+          tr.aveBase = nearestAveX;
+          tr.mesh.position.x = tr.aveBase + tr.laneOffset;
+          tr.mesh.position.z = rz + (tr.direction === -1 ? 95 : -95);
+          tr.nearMissAwarded = false;
+        } else if (dzPlayer > 118) {
+          tr.aveBase = nearestAveX;
+          tr.mesh.position.x = tr.aveBase + tr.laneOffset;
+          tr.mesh.position.z = rz - 115 - Math.random() * 15;
+          tr.nearMissAwarded = false;
+        } else if (dzPlayer < -118) {
+          tr.aveBase = nearestAveX;
+          tr.mesh.position.x = tr.aveBase + tr.laneOffset;
+          tr.mesh.position.z = rz + 115 + Math.random() * 15;
+          tr.nearMissAwarded = false;
+        }
+      } else {
+        // East-West Avenue Traffic (axis === 'X') using vehicle front bumper to stop line (±11.8m)
+        for (const cell of this.cells) {
+          if (Math.abs(cell.zCenter - tr.aveBase) > 10) continue;
+          // E-W stops when N-S is GREEN or YELLOW
+          if (cell.state === 'GREEN' || cell.state === 'YELLOW') {
+            if (tr.direction === 1) {
+              const distToStop = cell.xCenter - 11.8 - (tr.mesh.position.x + tr.halfLen);
+              if (distToStop > 0.3 && distToStop < 14.0) {
+                shouldStop = true;
+                break;
+              }
+            } else {
+              const distToStop = tr.mesh.position.x - tr.halfLen - (cell.xCenter + 11.8);
+              if (distToStop > 0.3 && distToStop < 14.0) {
+                shouldStop = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (tr.overtakeCooldown > 0) tr.overtakeCooldown -= dt;
+        let blockedAhead = false;
+        let leadingGap = Infinity;
+
+        for (const other of this.traffic) {
+          if (other === tr || other.axis !== 'X') continue;
+          if (
+            Math.abs(other.aveBase - tr.aveBase) < 10 &&
+            other.direction === tr.direction &&
+            Math.abs(other.laneOffset - tr.laneOffset) < 1.5
+          ) {
+            const centerDist = (other.mesh.position.x - tr.mesh.position.x) * tr.direction;
+            const bumperGap = centerDist - (tr.halfLen + other.halfLen);
+            if (bumperGap > -1.0 && bumperGap < 12.0) {
+              if (bumperGap < leadingGap) leadingGap = bumperGap;
+              if (other.currentSpeed < tr.baseSpeed - 1.2 || bumperGap < 7.0) {
+                blockedAhead = true;
+              }
+            }
+          }
+        }
+
+        if (blockedAhead && tr.overtakeCooldown <= 0 && tr.vehicleType !== 'rickshaw') {
+          const lanes = tr.direction === 1 ? [-1.8, -3.6, -5.0] : [1.8, 3.6, 5.0];
+          for (const cand of lanes) {
+            if (Math.abs(cand - tr.targetLaneOffset) > 0.5) {
+              let occupied = false;
+              for (const other of this.traffic) {
+                if (other === tr || other.axis !== 'X') continue;
+                if (
+                  Math.abs(other.aveBase - tr.aveBase) < 10 &&
+                  other.direction === tr.direction &&
+                  Math.abs(other.laneOffset - cand) < 1.4 &&
+                  Math.abs(other.mesh.position.x - tr.mesh.position.x) < tr.halfLen + other.halfLen + 3.5
+                ) {
+                  occupied = true;
+                  break;
+                }
+              }
+              if (!occupied) {
+                tr.targetLaneOffset = cand;
+                tr.overtakeCooldown = 4.5 + Math.random() * 5.0;
+                break;
+              }
+            }
+          }
+        }
+
+        shouldStop = shouldStop || (blockedAhead && leadingGap < 2.2);
+        tr.stoppedAtLight = shouldStop;
+        targetSpeed = shouldStop
+          ? 0
+          : blockedAhead
+          ? Math.min(tr.baseSpeed * 0.65, 5.0)
+          : Math.max(3.5, tr.baseSpeed + Math.sin(tr.swayPhase) * 0.8);
+
+        if (tr.currentSpeed > targetSpeed) {
+          tr.currentSpeed = Math.max(targetSpeed, tr.currentSpeed - 15.0 * dt);
+        } else if (tr.currentSpeed < targetSpeed) {
+          tr.currentSpeed = Math.min(targetSpeed, tr.currentSpeed + 6.0 * dt);
+        }
+
+        tr.laneOffset = THREE.MathUtils.damp(tr.laneOffset, tr.targetLaneOffset, 3.2, dt);
+        tr.mesh.position.z = tr.aveBase + tr.laneOffset;
+        tr.mesh.position.x += tr.direction * tr.currentSpeed * dt;
+        const deltaLane = tr.targetLaneOffset - tr.laneOffset;
+        tr.mesh.rotation.y =
+          tr.direction === 1 ? -Math.PI / 2 - deltaLane * 0.12 : Math.PI / 2 + deltaLane * 0.12;
+
+        // Migrate onto nearest E-W avenue only when far away in 2D fog (>85m) or beyond 118m longitudinal span
+        const dxPlayer = tr.mesh.position.x - rx;
+        const d2d = Math.hypot(dxPlayer, tr.mesh.position.z - rz);
+        if (Math.abs(tr.aveBase - nearestAveZ) > 10 && d2d > 85) {
+          tr.aveBase = nearestAveZ;
+          tr.mesh.position.z = tr.aveBase + tr.laneOffset;
+          tr.mesh.position.x = rx + (tr.direction === 1 ? -95 : 95);
+          tr.nearMissAwarded = false;
+        } else if (dxPlayer > 118) {
+          tr.aveBase = nearestAveZ;
+          tr.mesh.position.z = tr.aveBase + tr.laneOffset;
+          tr.mesh.position.x = rx - 115 - Math.random() * 15;
+          tr.nearMissAwarded = false;
+        } else if (dxPlayer < -118) {
+          tr.aveBase = nearestAveZ;
+          tr.mesh.position.z = tr.aveBase + tr.laneOffset;
+          tr.mesh.position.x = rx + 115 + Math.random() * 15;
+          tr.nearMissAwarded = false;
+        }
       }
 
-      tr.stoppedAtLight = shouldStop;
-      if (shouldStop) {
-        targetSpeed = 0;
-      }
-
-      // Smooth deceleration / acceleration
-      if (tr.currentSpeed > targetSpeed) {
-        tr.currentSpeed = Math.max(targetSpeed, tr.currentSpeed - 14.0 * dt);
-      } else if (tr.currentSpeed < targetSpeed) {
-        tr.currentSpeed = Math.min(targetSpeed, tr.currentSpeed + 5.5 * dt);
-      }
-
-      tr.mesh.position.z += tr.direction * tr.currentSpeed * dt;
       if (tr.hitCooldown > 0) tr.hitCooldown = Math.max(0, tr.hitCooldown - dt);
 
-      // Horn or Rickshaw Bell when approaching or when impatient in traffic jam
+      // 2D distance-gated horn audio (only when actually close in both X and Z!)
       if (tr.hornCooldown > 0) {
         tr.hornCooldown -= dt;
       } else {
-        const distZ = Math.abs(tr.mesh.position.z - rz);
-        if (tr.stoppedAtLight && tr.currentSpeed < 0.5 && distZ < 35) {
-          // Impatient Dhaka traffic jam honking!
-          if (tr.vehicleType === 'rickshaw') {
+        const d2d = Math.hypot(tr.mesh.position.x - rx, tr.mesh.position.z - rz);
+        if (d2d < 24 && d2d > 4) {
+          if (tr.isTruck) {
+            soundEngine.playTruckAirHorn();
+          } else if (tr.vehicleType === 'rickshaw') {
             soundEngine.playBell();
           } else {
             soundEngine.playTrafficHorn(tr.isBus);
           }
-          tr.hornCooldown = 2.8 + Math.random() * 4.5;
-        } else if (distZ < 25 && distZ > 6) {
-          if (tr.vehicleType === 'rickshaw') {
-            soundEngine.playBell();
-          } else {
-            soundEngine.playTrafficHorn(tr.isBus);
-          }
-          tr.hornCooldown = 5.0 + Math.random() * 6.0;
+          tr.hornCooldown = 4.0 + Math.random() * 5.0;
         }
-      }
-
-      // Recycle traffic ahead / behind
-      const relZ = tr.mesh.position.z - rz;
-      if (relZ > 75) {
-        tr.mesh.position.z = rz - 150 - Math.random() * 45;
-        tr.nearMissAwarded = false;
-      } else if (relZ < -175) {
-        tr.mesh.position.z = rz + 65 + Math.random() * 30;
-        tr.nearMissAwarded = false;
       }
 
       if (!checkCollision) continue;
 
       const dx = rx - tr.mesh.position.x;
       const dz = rz - tr.mesh.position.z;
-      const hitRadius = tr.isBus ? 4.2 : tr.vehicleType === 'cng' ? 3.1 : 2.4;
+      const hitRadius = tr.isTruck
+        ? 4.6
+        : tr.isBus
+        ? 4.2
+        : tr.vehicleType === 'leguna'
+        ? 3.4
+        : tr.vehicleType === 'cng'
+        ? 3.0
+        : 2.3;
       const distSq = dx * dx + dz * dz;
 
       if (distSq < hitRadius && tr.hitCooldown <= 0) {
         tr.hitCooldown = 1.1;
-        this.cameraShake = Math.max(this.cameraShake, tr.isBus ? 0.6 : 0.4);
+        this.cameraShake = Math.max(
+          this.cameraShake,
+          tr.isTruck ? 0.75 : tr.isBus ? 0.6 : 0.4
+        );
         this.spawnDebrisBurst(
           (rx + tr.mesh.position.x) * 0.5,
           0.9,
           (rz + tr.mesh.position.z) * 0.5,
-          tr.isBus ? 14 : 9
+          tr.isTruck ? 16 : tr.isBus ? 13 : 9
         );
         soundEngine.playHit();
 
-        const vName = tr.isBus ? 'বাস' : tr.vehicleType === 'cng' ? 'সিএনজি' : 'রিকশা';
+        const vName = tr.isTruck
+          ? 'হেভি ট্রাক'
+          : tr.isBus
+          ? 'বাস'
+          : tr.vehicleType === 'leguna'
+          ? 'লেগুনা'
+          : tr.vehicleType === 'cng'
+          ? 'সিএনজি'
+          : 'রিকশা';
         if (this.turboTimer > 0) {
-          tr.mesh.position.z -= 14;
-          const reward = tr.isBus ? 8000 : tr.vehicleType === 'cng' ? 5000 : 3500;
+          if (tr.axis === 'X') {
+            tr.mesh.position.x += tr.direction * 14;
+          } else {
+            tr.mesh.position.z += tr.direction * 14;
+          }
+          const reward = tr.isTruck
+            ? 12000
+            : tr.isBus
+            ? 8000
+            : tr.vehicleType === 'leguna'
+            ? 6000
+            : tr.vehicleType === 'cng'
+            ? 5000
+            : 3500;
           this.addMoney(reward);
           this.emitPopup(
             `টার্বো ধাক্কা! +৳${reward.toLocaleString('en-IN')}`,
@@ -1646,9 +2185,40 @@ export class DhakaGameEngine {
             'turbo'
           );
         } else {
-          this.speed = -6.0;
-          this.rickshaw.root.position.x += Math.sign(dx || 1) * (tr.isBus ? 1.4 : 0.9);
-          const dmg = tr.isBus ? 22 : tr.vehicleType === 'cng' ? 14 : 9;
+          // Momentum-conserving 2D impact deflection + suspension jolt
+          const distInv = 1 / Math.max(Math.sqrt(distSq), 0.35);
+          const nx = dx * distInv;
+          const nz = dz * distInv;
+          const knock = tr.isTruck ? 1.85 : tr.isBus ? 1.55 : tr.vehicleType === 'cng' ? 1.25 : 1.05;
+
+          this.rickshaw.root.position.x += nx * knock;
+          this.rickshaw.root.position.z += nz * knock;
+
+          // Project outward impulse onto rickshaw's forward and lateral axes
+          const sinY = Math.sin(this.yaw);
+          const cosY = Math.cos(this.yaw);
+          const impactMag = Math.max(5.5, Math.abs(this.speed) * 0.45 + 3.2);
+          const fwdBounce = -sinY * nx - cosY * nz;
+          const latBounce = cosY * nx - sinY * nz;
+
+          this.speed = THREE.MathUtils.clamp(
+            this.speed * 0.28 + fwdBounce * impactMag,
+            -9.0,
+            10.0
+          );
+          this.lateralVel += latBounce * impactMag * 0.85;
+          this.angularVel += latBounce * 2.2;
+          this.bounceVel += tr.isTruck ? 3.4 : 2.5;
+
+          const dmg = tr.isTruck
+            ? 28
+            : tr.isBus
+            ? 21
+            : tr.vehicleType === 'leguna'
+            ? 15
+            : tr.vehicleType === 'cng'
+            ? 13
+            : 8;
           this.applyDamage(dmg);
           soundEngine.playCrashVoice();
           this.emitPopup(
@@ -1660,11 +2230,17 @@ export class DhakaGameEngine {
       } else if (
         !tr.nearMissAwarded &&
         distSq >= hitRadius &&
-        distSq < (tr.isBus ? 9.5 : tr.vehicleType === 'cng' ? 7.5 : 6.0) &&
+        distSq < (tr.isTruck ? 11.0 : tr.isBus ? 9.5 : tr.vehicleType === 'cng' ? 7.5 : 6.0) &&
         Math.abs(this.speed) > 12
       ) {
         tr.nearMissAwarded = true;
-        const reward = tr.isBus ? 3500 : tr.vehicleType === 'cng' ? 2500 : 1800;
+        const reward = tr.isTruck
+          ? 4500
+          : tr.isBus
+          ? 3500
+          : tr.vehicleType === 'cng'
+          ? 2500
+          : 1800;
         this.addMoney(reward);
         this.emitPopup(`নিয়ার মিস! +৳${reward.toLocaleString('en-IN')}`, 'একটুর জন্য বাঁচলেন!', 'cash');
       }
@@ -1672,18 +2248,39 @@ export class DhakaGameEngine {
   }
 
   private updatePedestrians(dt: number, elapsed: number): void {
+    const rx = this.rickshaw.root.position.x;
     const rz = this.rickshaw.root.position.z;
+    const nearestAveX = Math.round(rx / CELL_SIZE) * CELL_SIZE;
+    const nearestAveZ = Math.round(rz / CELL_SIZE) * CELL_SIZE;
 
-    for (const ped of this.pedestrians) {
-      // Walk along sidewalk
-      ped.root.position.z += ped.direction * ped.walkingSpeed * dt;
-
-      // Recycle if far behind or ahead
-      if (Math.abs(ped.root.position.z - rz) > 110) {
-        ped.root.position.z = rz - 80 + Math.random() * 160;
+    for (let i = 0; i < this.pedestrians.length; i++) {
+      const p = this.pedestrians[i];
+      const ped = p.rig;
+      const laneLateral = 9.5 + (i % 3) * 0.55;
+      if (p.axis === 'Z') {
+        ped.root.position.z += ped.direction * ped.walkingSpeed * dt;
+        if (
+          Math.abs(ped.root.position.z - rz) > 95 ||
+          Math.abs(p.aveBase - nearestAveX) > 48
+        ) {
+          p.aveBase = nearestAveX;
+          ped.root.position.x = p.aveBase + p.side * laneLateral;
+          ped.root.position.z = rz - 75 + Math.random() * 150;
+          ped.root.rotation.y = ped.direction === 1 ? Math.PI : 0;
+        }
+      } else {
+        ped.root.position.x += ped.direction * ped.walkingSpeed * dt;
+        if (
+          Math.abs(ped.root.position.x - rx) > 95 ||
+          Math.abs(p.aveBase - nearestAveZ) > 48
+        ) {
+          p.aveBase = nearestAveZ;
+          ped.root.position.z = p.aveBase + p.side * laneLateral;
+          ped.root.position.x = rx - 75 + Math.random() * 150;
+          ped.root.rotation.y = ped.direction === 1 ? -Math.PI / 2 : Math.PI / 2;
+        }
       }
 
-      // Stride animation
       const stride = elapsed * 8 * ped.walkingSpeed + ped.phase;
       ped.legL.rotation.x = Math.sin(stride) * 0.5;
       ped.legR.rotation.x = -Math.sin(stride) * 0.5;
@@ -1700,15 +2297,16 @@ export class DhakaGameEngine {
       const m = this.mobs[i];
       const pos = m.rig.root.position;
 
-      if (Math.abs(pos.z - rz) > 70) {
-        const flank = i % 2 === 0 ? -1 : 1;
-        pos.set(flank * (6.3 + (i % 3) * 0.6), 0, rz - 36 - (i % 5) * 7);
+      // 2D distance recycle around player (never clamped to x = ±8.8!)
+      if (Math.hypot(pos.x - rx, pos.z - rz) > 75) {
+        const angle = (i / Math.max(1, this.mobs.length)) * Math.PI * 2;
+        pos.set(rx + Math.cos(angle) * 28, 0, rz + Math.sin(angle) * 28);
         m.stunTimer = 0;
       }
 
       if (m.stunTimer > 0) {
         m.stunTimer -= dt;
-        pos.x = THREE.MathUtils.clamp(pos.x + m.knockVelX * dt, -8.8, 8.8);
+        pos.x += m.knockVelX * dt;
         pos.z += m.knockVelZ * dt;
         m.knockVelX = THREE.MathUtils.damp(m.knockVelX, 0, 5, dt);
         m.knockVelZ = THREE.MathUtils.damp(m.knockVelZ, 0, 5, dt);
@@ -1722,7 +2320,6 @@ export class DhakaGameEngine {
         _v1.divideScalar(dist);
       }
 
-      // Separation
       for (let j = 0; j < this.mobs.length; j++) {
         if (i === j) continue;
         const other = this.mobs[j].rig.root.position;
@@ -1738,7 +2335,7 @@ export class DhakaGameEngine {
       _v1.normalize();
 
       const mobSpeed = (9.0 + this.wantedLevel * 1.4) * m.rig.speedFactor;
-      pos.x = THREE.MathUtils.clamp(pos.x + _v1.x * mobSpeed * dt, -8.8, 8.8);
+      pos.x += _v1.x * mobSpeed * dt;
       pos.z += _v1.z * mobSpeed * dt;
 
       m.rig.root.lookAt(rx, 0, rz);
@@ -1847,7 +2444,6 @@ export class DhakaGameEngine {
       this.camera.position.lerp(_camDesired, 1 - Math.exp(-18 * dt));
       this.currentLookAt.lerp(_camLookTarget, 1 - Math.exp(-18 * dt));
     } else if (this.cameraMode === CameraMode.FRONT) {
-      // Front selfie angle: placed in front of handlebars, looking directly back at Quader's face & steering
       const distFront = 3.4;
       _camDesired.set(
         rx - sinY * distFront - this.steerAngle * 0.6,
@@ -1908,6 +2504,8 @@ export class DhakaGameEngine {
       activeMobCount: this.mobs.length,
       trafficCount: this.traffic.length,
       trafficSignal: this.activeCrossingHudInfo,
+      weather: this.weather,
+      roadGrip: this.roadGrip,
     });
   }
 

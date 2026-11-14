@@ -491,6 +491,42 @@ class SoundEngine {
     });
   }
 
+  /**
+   * Authentic Bangladeshi Truck Deep Hydraulic Air Horn (হাইড্রলিক ভেঁপু হর্ন)
+   */
+  public playTruckAirHorn(): void {
+    this.init();
+    if (!this.ctx || this.muted) return;
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+
+    const now = this.ctx.currentTime;
+    const duration = 0.42;
+
+    [175, 220].forEach((f) => {
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(f, now);
+      osc.frequency.linearRampToValueAtTime(f * 0.99, now + duration);
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(750, now);
+
+      gain.gain.setValueAtTime(0.24, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + duration + 0.02);
+    });
+  }
+
   /** Vegetable Stall smash squish & wood crack! */
   public playVeggieSmash(): void {
     this.init();
@@ -794,6 +830,7 @@ class SoundEngine {
   private radioStation: 'FM_98_4' | 'FOLK' | 'OFF' = 'FM_98_4';
   private radioTimerId: number | null = null;
   private folkTimerId: number | null = null;
+  private ambientStreetTimerId: number | null = null;
   private ambientNoiseSource: AudioBufferSourceNode | null = null;
   private ambientGainNode: GainNode | null = null;
   private ambientHumOsc: OscillatorNode | null = null;
@@ -807,7 +844,49 @@ class SoundEngine {
     'বিজয় সরণি ও মিরপুর রোডে যানবাহনের দীর্ঘ সারি! ক্রিং ক্রিং বেল বাজিয়ে সতর্কভাবে চালান।'
   ];
 
-  /** Starts the authentic Dhaka street ambience (generator hum + low distant traffic rumble) */
+  /** Subtle distant Dhaka street audio cue (soft faraway bell chime or muffled traffic horn) */
+  private playDistantCityCue(): void {
+    if (!this.ctx || this.muted || this.ctx.state !== 'running') return;
+    try {
+      const now = this.ctx.currentTime;
+      const isBell = Math.random() > 0.45;
+      if (isBell) {
+        [0, 0.14].forEach((offset, idx) => {
+          if (!this.ctx) return;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          const t = now + offset;
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(idx === 0 ? 1560 : 1680, t);
+          gain.gain.setValueAtTime(0.001, t);
+          gain.gain.linearRampToValueAtTime(0.035, t + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.27);
+        });
+      } else {
+        const osc = this.ctx.createOscillator();
+        const filter = this.ctx.createBiquadFilter();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(240 + Math.random() * 90, now);
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(520, now);
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.038, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.24);
+      }
+    } catch {}
+  }
+
+  /** Starts the authentic Dhaka street ambience (generator hum + low distant traffic rumble + street cues) */
   public startAmbience(): void {
     this.init();
     if (!this.ctx || this.muted || this.ambientGainNode) return;
@@ -856,6 +935,13 @@ class SoundEngine {
       this.ambientNoiseSource.start(0);
       this.ambientHumOsc.start(0);
 
+      if (this.ambientStreetTimerId) window.clearInterval(this.ambientStreetTimerId);
+      this.ambientStreetTimerId = window.setInterval(() => {
+        if (!this.muted) {
+          this.playDistantCityCue();
+        }
+      }, 7200);
+
       this.scheduleRadioCycle();
     } catch {}
   }
@@ -877,6 +963,10 @@ class SoundEngine {
       this.ambientGainNode = null;
     }, 350);
 
+    if (this.ambientStreetTimerId) {
+      window.clearInterval(this.ambientStreetTimerId);
+      this.ambientStreetTimerId = null;
+    }
     if (this.radioTimerId) {
       window.clearInterval(this.radioTimerId);
       this.radioTimerId = null;

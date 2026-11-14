@@ -4,12 +4,11 @@ import {
   Camera,
   ChevronDown,
   ChevronUp,
+  Cloud,
   Gamepad2,
-  Moon,
   Pause,
   Radio,
   Sun,
-  Sunset,
   Volume2,
   VolumeX,
 } from 'lucide-react';
@@ -21,7 +20,7 @@ import {
   HudSnapshot,
   InputState,
   ScreenPopup,
-  TimeOfDay,
+  WeatherType,
 } from '../types/game';
 
 interface GameHudProps {
@@ -29,8 +28,8 @@ interface GameHudProps {
   driverId: DriverId;
   cameraMode: CameraMode;
   onChangeCamera: (mode: CameraMode) => void;
-  timeOfDay: TimeOfDay;
-  onChangeTimeOfDay: (tod: TimeOfDay) => void;
+  weather: WeatherType;
+  onChangeWeather: (weather: WeatherType) => void;
   isMuted: boolean;
   onToggleMute: () => void;
   onRingBell: () => void;
@@ -44,8 +43,8 @@ export const GameHud: React.FC<GameHudProps> = ({
   driverId,
   cameraMode,
   onChangeCamera,
-  timeOfDay,
-  onChangeTimeOfDay,
+  weather,
+  onChangeWeather,
   isMuted,
   onToggleMute,
   onRingBell,
@@ -190,7 +189,7 @@ export const GameHud: React.FC<GameHudProps> = ({
 
         {/* Center: Major Traffic Signal Alert Widget */}
         {hud.trafficSignal && hud.trafficSignal.state !== 'NONE' && (
-          <div className="pointer-events-auto flex flex-col items-center rounded-2xl border border-white/20 bg-zinc-950/95 px-3.5 py-2 shadow-2xl backdrop-blur-md">
+          <div className="pointer-events-auto flex flex-col items-center rounded-2xl border border-white/20 bg-zinc-950/95 px-3.5 py-2 shadow-2xl">
             <div className="flex items-center gap-2.5">
               {/* 3-light compact signal housing */}
               <div className="flex items-center gap-1.5 rounded-full bg-zinc-900 border border-white/15 px-2 py-1 shadow-inner">
@@ -434,40 +433,29 @@ export const GameHud: React.FC<GameHudProps> = ({
               <span>{soundEngine.getRadioStationLabel()}</span>
             </button>
 
-            {/* Atmosphere Presets */}
-            <div className="hidden items-center gap-1 rounded-lg bg-zinc-900 p-0.5 md:flex">
+            {/* Weather Presets (Sunny / Cloudy) */}
+            <div className="hidden items-center gap-1 rounded-lg bg-zinc-900 p-0.5 sm:flex">
               <button
                 type="button"
-                onClick={() => onChangeTimeOfDay(TimeOfDay.DUSK)}
-                title="গোধূলি"
+                onClick={() => onChangeWeather('SUNNY')}
+                title="রোদ্রোজ্জ্বল আবহাওয়া"
                 className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer ${
-                  timeOfDay === TimeOfDay.DUSK ? 'bg-zinc-700 text-amber-300' : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                <Sunset className="h-3.5 w-3.5" />
-                <span>গোধূলি</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onChangeTimeOfDay(TimeOfDay.NIGHT)}
-                title="নিয়ন রাত"
-                className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer ${
-                  timeOfDay === TimeOfDay.NIGHT ? 'bg-zinc-700 text-sky-300' : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                <Moon className="h-3.5 w-3.5" />
-                <span>রাত</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => onChangeTimeOfDay(TimeOfDay.NOON)}
-                title="দুপুর"
-                className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer ${
-                  timeOfDay === TimeOfDay.NOON ? 'bg-zinc-700 text-yellow-300' : 'text-zinc-400 hover:text-white'
+                  weather === 'SUNNY' ? 'bg-zinc-700 text-amber-300' : 'text-zinc-400 hover:text-white'
                 }`}
               >
                 <Sun className="h-3.5 w-3.5" />
-                <span>দুপুর</span>
+                <span>রোদ</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeWeather('CLOUDY')}
+                title="মেঘলা আবহাওয়া"
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer ${
+                  weather === 'CLOUDY' ? 'bg-zinc-700 text-sky-300' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Cloud className="h-3.5 w-3.5" />
+                <span>মেঘলা</span>
               </button>
             </div>
 

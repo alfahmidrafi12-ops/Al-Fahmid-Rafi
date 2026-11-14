@@ -1,13 +1,13 @@
 import React from 'react';
-import { Volume2, VolumeX, Play, Sun, Moon, Sunset } from 'lucide-react';
-import { DRIVER_PROFILES, DriverId, TimeOfDay } from '../types/game';
+import { Volume2, VolumeX, Play, Sun, Cloud } from 'lucide-react';
+import { DRIVER_PROFILES, DriverId, WeatherType } from '../types/game';
 import { soundEngine } from '../audio/soundEngine';
 
 interface StartMenuProps {
   selectedDriver: DriverId;
   onSelectDriver: (id: DriverId) => void;
-  timeOfDay: TimeOfDay;
-  onSelectTimeOfDay: (tod: TimeOfDay) => void;
+  weather: WeatherType;
+  onSelectWeather: (weather: WeatherType) => void;
   highScore: number;
   isMuted: boolean;
   onToggleMute: () => void;
@@ -17,8 +17,8 @@ interface StartMenuProps {
 export const StartMenu: React.FC<StartMenuProps> = ({
   selectedDriver,
   onSelectDriver,
-  timeOfDay,
-  onSelectTimeOfDay,
+  weather,
+  onSelectWeather,
   highScore,
   isMuted,
   onToggleMute,
@@ -47,43 +47,31 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           )}
         </div>
 
-        {/* Lighting Atmosphere & Audio Controls */}
+        {/* Weather Atmosphere & Audio Controls */}
         <div className="flex items-center gap-2 rounded-xl border border-white/12 bg-zinc-950/90 p-1.5 shadow-xl">
           <button
             type="button"
-            onClick={() => onSelectTimeOfDay(TimeOfDay.DUSK)}
+            onClick={() => onSelectWeather('SUNNY')}
             className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-              timeOfDay === TimeOfDay.DUSK
-                ? 'bg-amber-500 text-zinc-950'
-                : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-            }`}
-          >
-            <Sunset className="h-3.5 w-3.5" />
-            <span>গোধূলি</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectTimeOfDay(TimeOfDay.NIGHT)}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-              timeOfDay === TimeOfDay.NIGHT
-                ? 'bg-amber-500 text-zinc-950'
-                : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-            }`}
-          >
-            <Moon className="h-3.5 w-3.5" />
-            <span>নিয়ন রাত</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectTimeOfDay(TimeOfDay.NOON)}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-              timeOfDay === TimeOfDay.NOON
+              weather === 'SUNNY'
                 ? 'bg-amber-500 text-zinc-950'
                 : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
             }`}
           >
             <Sun className="h-3.5 w-3.5" />
-            <span>রোদ্রোজ্জ্বল দুপুর</span>
+            <span>রোদ্রোজ্জ্বল</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelectWeather('CLOUDY')}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+              weather === 'CLOUDY'
+                ? 'bg-amber-500 text-zinc-950'
+                : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+            }`}
+          >
+            <Cloud className="h-3.5 w-3.5" />
+            <span>মেঘলা</span>
           </button>
 
           <div className="h-5 w-px bg-white/12" />

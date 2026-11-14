@@ -5,10 +5,12 @@ export interface ProceduralTexturePack {
   curb: THREE.CanvasTexture;
   sidewalk: THREE.CanvasTexture;
   rickshawArt: THREE.CanvasTexture;
+  rickshawHoodVariants: THREE.CanvasTexture[];
   rickshawRearArt: THREE.CanvasTexture;
   contactShadow: THREE.CanvasTexture;
   corrugatedTin: THREE.CanvasTexture;
   buildingWindows: THREE.CanvasTexture[];
+  dhakaShopfrontGround: THREE.CanvasTexture[];
   shopSigns: THREE.CanvasTexture[];
   bangladeshiPosters: THREE.CanvasTexture[];
   heritageBrick: THREE.CanvasTexture;
@@ -51,42 +53,42 @@ function finalizeColorTexture(
 export function createProceduralTextures(maxAnisotropy: number): ProceduralTexturePack {
   const allTextures: THREE.Texture[] = [];
 
-  // 1. Worn Purana Dhaka Asphalt Road with lane stripes & patches (512x512)
+  // 1. Worn Purana Dhaka Asphalt Road with realistic aggregate contrast & lane markings (512x512)
   const roadCanvas = document.createElement('canvas');
   roadCanvas.width = 512;
   roadCanvas.height = 512;
   const rCtx = roadCanvas.getContext('2d')!;
-  rCtx.fillStyle = '#1e2229';
+  rCtx.fillStyle = '#282e37';
   rCtx.fillRect(0, 0, 512, 512);
 
-  // Road surface aggregate texture
-  for (let i = 0; i < 5000; i++) {
+  // Road surface mineral aggregate texture
+  for (let i = 0; i < 6500; i++) {
     const x = Math.random() * 512;
     const y = Math.random() * 512;
-    const shade = 24 + Math.floor(Math.random() * 28);
-    rCtx.fillStyle = `rgb(${shade},${shade + 2},${shade + 5})`;
+    const shade = 34 + Math.floor(Math.random() * 34);
+    rCtx.fillStyle = `rgb(${shade},${shade + 3},${shade + 7})`;
     rCtx.fillRect(x, y, 2, 2);
   }
 
   // Worn tire rut tracks in left, center, right lanes
-  rCtx.fillStyle = 'rgba(10, 12, 16, 0.35)';
-  rCtx.fillRect(95, 0, 75, 512);
-  rCtx.fillRect(215, 0, 80, 512);
-  rCtx.fillRect(340, 0, 75, 512);
+  rCtx.fillStyle = 'rgba(18, 22, 28, 0.38)';
+  rCtx.fillRect(92, 0, 78, 512);
+  rCtx.fillRect(214, 0, 82, 512);
+  rCtx.fillRect(340, 0, 78, 512);
 
   // White border lines
-  rCtx.fillStyle = '#cbd5e1';
+  rCtx.fillStyle = '#d4dce6';
   rCtx.fillRect(16, 0, 8, 512);
   rCtx.fillRect(488, 0, 8, 512);
 
   // Yellow center divider dashed lines
-  rCtx.fillStyle = '#f59e0b';
+  rCtx.fillStyle = '#eab308';
   for (let y = 20; y < 512; y += 128) {
     rCtx.fillRect(250, y, 12, 74);
   }
 
-  // Weathered road patch
-  rCtx.fillStyle = '#14171d';
+  // Subtle weathered bitumen patch
+  rCtx.fillStyle = '#20252d';
   rCtx.beginPath();
   rCtx.ellipse(140, 260, 42, 26, 0.2, 0, Math.PI * 2);
   rCtx.fill();
@@ -108,14 +110,19 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   const curb = finalizeColorTexture(curbCanvas, maxAnisotropy, 1, 24);
   allTextures.push(curb);
 
-  // 3. Concrete Sidewalk Pavers
+  // 3. Concrete Sidewalk Pavers (warm Dhaka footpath grey concrete)
   const swCanvas = document.createElement('canvas');
   swCanvas.width = 256;
   swCanvas.height = 256;
   const swCtx = swCanvas.getContext('2d')!;
-  swCtx.fillStyle = '#475569';
+  swCtx.fillStyle = '#687382';
   swCtx.fillRect(0, 0, 256, 256);
-  swCtx.strokeStyle = '#334155';
+  for (let i = 0; i < 450; i++) {
+    const shade = 92 + Math.floor(Math.random() * 28);
+    swCtx.fillStyle = `rgb(${shade},${shade + 4},${shade + 8})`;
+    swCtx.fillRect(Math.random() * 256, Math.random() * 256, 3, 3);
+  }
+  swCtx.strokeStyle = '#475569';
   swCtx.lineWidth = 3;
   for (let i = 0; i <= 256; i += 64) {
     swCtx.beginPath();
@@ -130,51 +137,59 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   const sidewalk = finalizeColorTexture(swCanvas, maxAnisotropy, 2, 28);
   allTextures.push(sidewalk);
 
-  // 4. Bangladeshi Rickshaw Folk Art Hood (512x512)
-  const artCanvas = document.createElement('canvas');
-  artCanvas.width = 512;
-  artCanvas.height = 512;
-  const aCtx = artCanvas.getContext('2d')!;
-  const grad = aCtx.createLinearGradient(0, 0, 512, 512);
-  grad.addColorStop(0, '#e11d48');
-  grad.addColorStop(0.5, '#f43f5e');
-  grad.addColorStop(1, '#9f1239');
-  aCtx.fillStyle = grad;
-  aCtx.fillRect(0, 0, 512, 512);
+  // 4. Bangladeshi Rickshaw Folk Art Hoods (4 regional Dhaka folk palettes)
+  const hoodPalettes = [
+    { c1: '#be123c', c2: '#e11d48', c3: '#881337', trim: '#facc15', accent: '#06b6d4', petalA: '#fde047', petalB: '#2dd4bf' },
+    { c1: '#047857', c2: '#10b981', c3: '#064e3b', trim: '#fbbf24', accent: '#f43f5e', petalA: '#fef08a', petalB: '#fb7185' },
+    { c1: '#1d4ed8', c2: '#2563eb', c3: '#1e3a8a', trim: '#f59e0b', accent: '#34d399', petalA: '#fde047', petalB: '#f472b6' },
+    { c1: '#9333ea', c2: '#c026d3', c3: '#6b21a8', trim: '#facc15', accent: '#38bdf8', petalA: '#fef08a', petalB: '#22d3ee' },
+  ];
+  const rickshawHoodVariants = hoodPalettes.map((hp) => {
+    const artCanvas = document.createElement('canvas');
+    artCanvas.width = 512;
+    artCanvas.height = 512;
+    const aCtx = artCanvas.getContext('2d')!;
+    const grad = aCtx.createLinearGradient(0, 0, 512, 512);
+    grad.addColorStop(0, hp.c1);
+    grad.addColorStop(0.5, hp.c2);
+    grad.addColorStop(1, hp.c3);
+    aCtx.fillStyle = grad;
+    aCtx.fillRect(0, 0, 512, 512);
 
-  // Ornamental folk border
-  aCtx.strokeStyle = '#facc15';
-  aCtx.lineWidth = 18;
-  aCtx.strokeRect(18, 18, 476, 476);
-  aCtx.strokeStyle = '#06b6d4';
-  aCtx.lineWidth = 8;
-  aCtx.strokeRect(36, 36, 440, 440);
+    aCtx.strokeStyle = hp.trim;
+    aCtx.lineWidth = 18;
+    aCtx.strokeRect(18, 18, 476, 476);
+    aCtx.strokeStyle = hp.accent;
+    aCtx.lineWidth = 8;
+    aCtx.strokeRect(36, 36, 440, 440);
 
-  // Stylized folk floral medallions
-  const drawFlower = (cx: number, cy: number, r: number) => {
-    for (let p = 0; p < 8; p++) {
-      const ang = (p * Math.PI) / 4;
-      aCtx.save();
-      aCtx.translate(cx + Math.cos(ang) * r * 0.55, cy + Math.sin(ang) * r * 0.55);
-      aCtx.rotate(ang);
-      aCtx.fillStyle = p % 2 === 0 ? '#fde047' : '#2dd4bf';
+    const drawFlower = (cx: number, cy: number, r: number) => {
+      for (let p = 0; p < 8; p++) {
+        const ang = (p * Math.PI) / 4;
+        aCtx.save();
+        aCtx.translate(cx + Math.cos(ang) * r * 0.55, cy + Math.sin(ang) * r * 0.55);
+        aCtx.rotate(ang);
+        aCtx.fillStyle = p % 2 === 0 ? hp.petalA : hp.petalB;
+        aCtx.beginPath();
+        aCtx.ellipse(0, 0, r * 0.48, r * 0.24, 0, 0, Math.PI * 2);
+        aCtx.fill();
+        aCtx.restore();
+      }
+      aCtx.fillStyle = '#ffffff';
       aCtx.beginPath();
-      aCtx.ellipse(0, 0, r * 0.48, r * 0.24, 0, 0, Math.PI * 2);
+      aCtx.arc(cx, cy, r * 0.26, 0, Math.PI * 2);
       aCtx.fill();
-      aCtx.restore();
-    }
-    aCtx.fillStyle = '#ffffff';
-    aCtx.beginPath();
-    aCtx.arc(cx, cy, r * 0.26, 0, Math.PI * 2);
-    aCtx.fill();
-  };
-  drawFlower(256, 256, 95);
-  drawFlower(115, 115, 48);
-  drawFlower(397, 115, 48);
-  drawFlower(115, 397, 48);
-  drawFlower(397, 397, 48);
-  const rickshawArt = finalizeColorTexture(artCanvas, maxAnisotropy);
-  allTextures.push(rickshawArt);
+    };
+    drawFlower(256, 256, 95);
+    drawFlower(115, 115, 48);
+    drawFlower(397, 115, 48);
+    drawFlower(115, 397, 48);
+    drawFlower(397, 397, 48);
+    const tex = finalizeColorTexture(artCanvas, maxAnisotropy);
+    allTextures.push(tex);
+    return tex;
+  });
+  const rickshawArt = rickshawHoodVariants[0];
 
   // 5. Rear Rickshaw Plate ("মায়ের দোয়া পরিবহন")
   const rearCanvas = document.createElement('canvas');
@@ -230,11 +245,15 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   const corrugatedTin = finalizeColorTexture(tinCanvas, maxAnisotropy, 2, 1);
   allTextures.push(corrugatedTin);
 
-  // 8. Building Windows
+  // 8. Authentic Dhaka Building Facade Textures (7 regional finishes with window grilles & weathered plaster)
   const facadePalettes = [
-    { wall: '#c9b79c', trim: '#713f12', lit: '#fef08a', dark: '#1e293b' },
-    { wall: '#94a3b8', trim: '#0f766e', lit: '#fef9c3', dark: '#0f172a' },
-    { wall: '#fdba74', trim: '#9a3412', lit: '#fef08a', dark: '#1c1917' },
+    { wall: '#d6c6af', trim: '#7c2d12', lit: '#fef3c7', dark: '#27303f', grill: true },   // Warm sandstone plaster + brown trim
+    { wall: '#cbd5e1', trim: '#0f766e', lit: '#e0f2fe', dark: '#1e293b', grill: true },   // Cool ash concrete + teal bands
+    { wall: '#e2a37e', trim: '#9a3412', lit: '#fef08a', dark: '#292524', grill: true },   // Old Dhaka terracotta peach
+    { wall: '#e7e5e4', trim: '#1e40af', lit: '#dbeafe', dark: '#172554', grill: false },  // Modern Dhanmondi ivory-blue
+    { wall: '#d4b483', trim: '#57534e', lit: '#fef9c3', dark: '#1c1917', grill: true },   // Ochre commercial facade
+    { wall: '#b8d0cb', trim: '#065f46', lit: '#dcfce7', dark: '#14332a', grill: false },  // Mint mosaic tile tower
+    { wall: '#b97a63', trim: '#7f1d1d', lit: '#fed7aa', dark: '#2d1b18', grill: true },   // Weathered brick-plaster flat
   ];
   const buildingWindows = facadePalettes.map((pal) => {
     const bCanvas = document.createElement('canvas');
@@ -244,22 +263,88 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
     bCtx.fillStyle = pal.wall;
     bCtx.fillRect(0, 0, 256, 512);
 
+    // Subtle rain-streak weathering at slab edges
     for (let y = 0; y < 512; y += 128) {
+      bCtx.fillStyle = 'rgba(30, 41, 59, 0.14)';
+      bCtx.fillRect(0, y + 10, 256, 10);
       bCtx.fillStyle = pal.trim;
       bCtx.fillRect(0, y, 256, 10);
 
       for (let col = 0; col < 3; col++) {
         const wx = 22 + col * 78;
         const wy = y + 26;
-        const isLit = (y + col * 37) % 3 === 0;
+        const isLit = (y + col * 37) % 4 === 0;
         bCtx.fillStyle = isLit ? pal.lit : pal.dark;
         bCtx.fillRect(wx, wy, 52, 72);
         bCtx.strokeStyle = pal.trim;
         bCtx.lineWidth = 3;
         bCtx.strokeRect(wx, wy, 52, 72);
+
+        // Dhaka-style iron security grill bars
+        if (pal.grill) {
+          bCtx.strokeStyle = 'rgba(15, 23, 42, 0.55)';
+          bCtx.lineWidth = 2;
+          for (let gx = wx + 13; gx < wx + 50; gx += 13) {
+            bCtx.beginPath();
+            bCtx.moveTo(gx, wy);
+            bCtx.lineTo(gx, wy + 72);
+            bCtx.stroke();
+          }
+        }
       }
     }
     const tex = finalizeColorTexture(bCanvas, maxAnisotropy);
+    allTextures.push(tex);
+    return tex;
+  });
+
+  // 8B. Ground-Floor Dhaka Shuttered Shopfront Arcades (Rolling steel shutters + signage strip)
+  const shopGroundDefs = [
+    { top: '#14532d', title: 'বিসমিল্লাহ ফার্মেসি ও সার্জিক্যাল', shutter: '#64748b', accent: '#facc15' },
+    { top: '#991b1b', title: 'মায়ের দোয়া টেইলার্স এন্ড ফ্যাশন', shutter: '#71717a', accent: '#fef08a' },
+    { top: '#1e3a8a', title: 'ঢাকা হার্ডওয়্যার ও ইলেকট্রিক মার্ট', shutter: '#475569', accent: '#38bdf8' },
+  ];
+  const dhakaShopfrontGround = shopGroundDefs.map((sg) => {
+    const c = document.createElement('canvas');
+    c.width = 512;
+    c.height = 192;
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(0, 0, 512, 192);
+
+    // Top signboard fascia
+    ctx.fillStyle = sg.top;
+    ctx.fillRect(8, 8, 496, 48);
+    ctx.strokeStyle = sg.accent;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(10, 10, 492, 44);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 26px "Hind Siliguri", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(sg.title, 256, 40);
+
+    // 3 rolling steel corrugated shutters
+    for (let s = 0; s < 3; s++) {
+      const sx = 18 + s * 164;
+      ctx.fillStyle = s === 1 ? '#1e293b' : sg.shutter; // Middle bay half open / lit shop interior
+      ctx.fillRect(sx, 64, 148, 120);
+      if (s === 1) {
+        ctx.fillStyle = '#fef3c7';
+        ctx.fillRect(sx + 8, 102, 132, 78);
+        ctx.fillStyle = sg.shutter;
+        ctx.fillRect(sx, 64, 148, 38);
+      }
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 2;
+      const limitY = s === 1 ? 102 : 182;
+      for (let ry = 72; ry < limitY; ry += 8) {
+        ctx.beginPath();
+        ctx.moveTo(sx, ry);
+        ctx.lineTo(sx + 148, ry);
+        ctx.stroke();
+      }
+    }
+    const tex = finalizeColorTexture(c, maxAnisotropy);
     allTextures.push(tex);
     return tex;
   });
@@ -1063,10 +1148,12 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
     curb,
     sidewalk,
     rickshawArt,
+    rickshawHoodVariants,
     rickshawRearArt,
     contactShadow,
     corrugatedTin,
     buildingWindows,
+    dhakaShopfrontGround,
     shopSigns,
     bangladeshiPosters,
     heritageBrick,

@@ -12,11 +12,6 @@ export enum CameraMode {
   FRONT = 'FRONT',
 }
 
-export enum TimeOfDay {
-  DUSK = 'DUSK',
-  NIGHT = 'NIGHT',
-  NOON = 'NOON',
-}
 
 export type DriverId = 'kader' | 'ishrak';
 
@@ -67,7 +62,7 @@ export const DRIVER_PROFILES: Record<DriverId, DriverProfile> = {
 
 export type SignalColor = 'RED' | 'YELLOW' | 'GREEN';
 export type TrafficLightState = SignalColor | 'NONE';
-export type WeatherType = 'SUNNY' | 'MONSOON';
+export type WeatherType = 'SUNNY' | 'CLOUDY';
 
 export interface TrafficSignalHudInfo {
   state: TrafficLightState;

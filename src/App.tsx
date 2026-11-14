@@ -11,7 +11,7 @@ import {
   HudSnapshot,
   InputState,
   ScreenPopup,
-  TimeOfDay,
+  WeatherType,
 } from './types/game';
 
 const INITIAL_HUD: HudSnapshot = {
@@ -28,6 +28,8 @@ const INITIAL_HUD: HudSnapshot = {
   turboRemainingRatio: 0,
   activeMobCount: 0,
   trafficCount: 0,
+  weather: 'SUNNY',
+  roadGrip: 1.0,
 };
 
 export function App() {
@@ -37,7 +39,7 @@ export function App() {
   const [phase, setPhase] = useState<GamePhase>(GamePhase.MENU);
   const [selectedDriver, setSelectedDriver] = useState<DriverId>('kader');
   const [cameraMode, setCameraMode] = useState<CameraMode>(CameraMode.CHASE);
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(TimeOfDay.DUSK);
+  const [weather, setWeather] = useState<WeatherType>('SUNNY');
   const [isMuted, setIsMuted] = useState(false);
   const [hud, setHud] = useState<HudSnapshot>(INITIAL_HUD);
   const [popups, setPopups] = useState<ScreenPopup[]>([]);
@@ -75,9 +77,9 @@ export function App() {
     engineRef.current?.setDriver(id, true);
   }, []);
 
-  const handleSelectTimeOfDay = useCallback((tod: TimeOfDay) => {
-    setTimeOfDay(tod);
-    engineRef.current?.applyTimeOfDay(tod);
+  const handleSelectWeather = useCallback((nextWeather: WeatherType) => {
+    setWeather(nextWeather);
+    engineRef.current?.applyWeather(nextWeather);
   }, []);
 
   const handleChangeCamera = useCallback((mode: CameraMode) => {
@@ -129,8 +131,8 @@ export function App() {
         <StartMenu
           selectedDriver={selectedDriver}
           onSelectDriver={handleSelectDriver}
-          timeOfDay={timeOfDay}
-          onSelectTimeOfDay={handleSelectTimeOfDay}
+          weather={weather}
+          onSelectWeather={handleSelectWeather}
           highScore={hud.highScore}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
@@ -146,8 +148,8 @@ export function App() {
           driverId={selectedDriver}
           cameraMode={cameraMode}
           onChangeCamera={handleChangeCamera}
-          timeOfDay={timeOfDay}
-          onChangeTimeOfDay={handleSelectTimeOfDay}
+          weather={weather}
+          onChangeWeather={handleSelectWeather}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
           onRingBell={handleRingBell}
