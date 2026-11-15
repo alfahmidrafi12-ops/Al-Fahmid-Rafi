@@ -11,6 +11,11 @@ let cachedHospitalSign: THREE.CanvasTexture | null = null;
 let cachedCoachingSign: THREE.CanvasTexture | null = null;
 let cachedCollegeSign: THREE.CanvasTexture | null = null;
 let cachedRooftopAdSign: THREE.CanvasTexture | null = null;
+let cachedNewMarketArcadeSigns: THREE.CanvasTexture[] | null = null;
+let cachedBuetSign: THREE.CanvasTexture | null = null;
+let cachedGlassBankSign: THREE.CanvasTexture | null = null;
+let cachedTinMarketSign: THREE.CanvasTexture | null = null;
+let cachedBusCounterSign: THREE.CanvasTexture | null = null;
 
 function makeSignTex(
   bg: string,
@@ -794,3 +799,684 @@ export function createCityClinicHospitalModel(textures: ProceduralTexturePack): 
 
   return building;
 }
+
+/**
+ * 9. DHAKA NEW MARKET HERITAGE SHOPPING ARCADE ("ঢাকা নিউ মার্কেট ★ স্থাপিত ১৯৫৪ • গাউছিয়া — চন্দ্রিমা স্টাইল")
+ * Iconic 1954 cream-stucco & terracotta-brick colonnade arcade with arched ground corridor,
+ * striped bazaar tarpaulin awnings, colorful hanging saree/garment racks, scalloped roof parapet, and market signboards.
+ */
+export function createNewMarketArcadeModel(
+  textures: ProceduralTexturePack,
+  variant = 0
+): THREE.Group {
+  const building = new THREE.Group();
+  building.add(createContactShadowMesh(textures.contactShadow, 22, 16));
+
+  if (!cachedNewMarketArcadeSigns) {
+    cachedNewMarketArcadeSigns = [
+      makeSignTex(
+        '#991b1b',
+        '#fde047',
+        'ঢাকা নিউ মার্কেট • স্থাপিত ১৯৫৪',
+        'শাড়ি • থ্রি-পিস • চুড়ি • ক্রোকারিজ ও গহনা',
+        'DHAKA NEW MARKET HERITAGE ARCADE'
+      ),
+      makeSignTex(
+        '#065f46',
+        '#facc15',
+        'গাউছিয়া ও চন্দ্রিমা বস্ত্র বিতান',
+        'জামদানি • মসলিন • ঈদ কালেকশন • পাইকারি ও খুচরা',
+        'GAWSHIA & CHANDRIMA CLOTHING MARKET'
+      ),
+      makeSignTex(
+        '#1e3a8a',
+        '#fbbf24',
+        'নীলক্ষেত বই বাজার ও স্টেশনারি',
+        'স্কুল • কলেজ • বিশ্ববিদ্যালয় ও দুর্লভ বইয়ের সম্ভার',
+        'NILKHET BOOK MARKET • DHAKA'
+      ),
+      makeSignTex(
+        '#7c2d12',
+        '#fef08a',
+        'এলিফ্যান্ট রোড জুতা ও ব্যাগ মেলা',
+        'চামড়ার জুতা • স্যান্ডেল • ট্রাভেল ব্যাগ ও লেদার',
+        'ELEPHANT ROAD & NEW MARKET FOOTWEAR'
+      ),
+    ];
+  }
+
+  const creamStuccoMat = new THREE.MeshStandardMaterial({
+    color: Math.abs(variant) % 2 === 0 ? 0xf5ebd6 : 0xf2e3c6,
+    roughness: 0.78,
+  });
+  const terracottaMat = new THREE.MeshStandardMaterial({
+    map: textures.heritageBrick,
+    color: 0xb94a38,
+    roughness: 0.84,
+  });
+  const verandaShadowMat = new THREE.MeshStandardMaterial({ color: 0x1e1b18, roughness: 0.92 });
+  const awningMat = new THREE.MeshStandardMaterial({
+    map: textures.marketStripedAwning,
+    roughness: 0.62,
+  });
+  const garmentMat = new THREE.MeshStandardMaterial({
+    map: textures.newMarketGarmentRack,
+    roughness: 0.68,
+  });
+
+  const width = 17.0;
+  const depth = 11.4;
+  const height = 8.8 + (Math.abs(variant) % 2) * 2.4;
+
+  // Main warm cream colonial-modernist market body
+  const main = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), creamStuccoMat);
+  main.position.set(0, height / 2, 0);
+  main.castShadow = true;
+  main.receiveShadow = true;
+  building.add(main);
+
+  // Terracotta brick plinth & colonnade arch piers along the market corridor front (+Z)
+  const frontZ = depth / 2;
+  const darkRecess = new THREE.Mesh(new THREE.BoxGeometry(width - 1.2, 3.25, 0.25), verandaShadowMat);
+  darkRecess.position.set(0, 1.65, frontZ + 0.02);
+  building.add(darkRecess);
+
+  const shopTex = textures.dhakaShopfrontGround[Math.abs(variant) % textures.dhakaShopfrontGround.length];
+  const shopRow = new THREE.Mesh(
+    new THREE.PlaneGeometry(width - 1.6, 2.9),
+    new THREE.MeshStandardMaterial({ map: shopTex, roughness: 0.62 })
+  );
+  shopRow.position.set(0, 1.55, frontZ + 0.16);
+  building.add(shopRow);
+
+  // Terracotta arched pillars along front veranda
+  const pillarXs = [-7.6, -3.8, 0, 3.8, 7.6];
+  pillarXs.forEach((px) => {
+    const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.68, 3.65, 1.45), terracottaMat);
+    pillar.position.set(px, 1.825, frontZ + 0.72);
+    building.add(pillar);
+  });
+
+  // Scalloped concrete sunshade veranda cornice beam above colonnade
+  const arcadeBeam = new THREE.Mesh(new THREE.BoxGeometry(width + 0.4, 0.55, 1.85), creamStuccoMat);
+  arcadeBeam.position.set(0, 3.72, frontZ + 0.85);
+  building.add(arcadeBeam);
+
+  // Sloped blue-white striped bazaar awning extending over the front footpath corridor
+  const stripedAwning = new THREE.Mesh(new THREE.BoxGeometry(width - 0.8, 0.12, 2.25), awningMat);
+  stripedAwning.rotation.x = 0.24;
+  stripedAwning.position.set(0, 3.25, frontZ + 2.05);
+  building.add(stripedAwning);
+
+  // Hanging colorful saree / kurti / panjabi garment display panels tucked between pillars
+  [-5.7, -1.9, 1.9, 5.7].forEach((gx, gi) => {
+    if ((gi + variant) % 2 === 0) {
+      const rack = new THREE.Mesh(new THREE.BoxGeometry(2.35, 1.65, 0.12), garmentMat);
+      rack.position.set(gx, 1.55, frontZ + 1.25);
+      building.add(rack);
+    }
+  });
+
+  // Upper floor New Market cream concrete louvers & warm shuttered market offices/boutiques
+  const winTex = textures.buildingWindows[(Math.abs(variant) + 1) % textures.buildingWindows.length];
+  const upperBand = new THREE.Mesh(
+    new THREE.PlaneGeometry(width - 1.2, height - 4.8),
+    new THREE.MeshStandardMaterial({ map: winTex, roughness: 0.65 })
+  );
+  upperBand.position.set(0, 4.1 + (height - 4.8) / 2, frontZ + 0.08);
+  building.add(upperBand);
+
+  // Terracotta top parapet crown & iconic mid-century market signboard
+  const roofTrim = new THREE.Mesh(new THREE.BoxGeometry(width + 0.5, 0.55, depth + 0.5), terracottaMat);
+  roofTrim.position.set(0, height + 0.275, 0);
+  building.add(roofTrim);
+
+  const signTex = cachedNewMarketArcadeSigns[Math.abs(variant) % cachedNewMarketArcadeSigns.length];
+  const signMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(10.8, 2.15, 0.16),
+    new THREE.MeshBasicMaterial({ map: signTex })
+  );
+  signMesh.position.set(0, height - 0.85, frontZ + 0.22);
+  building.add(signMesh);
+
+  return building;
+}
+
+/**
+ * 10. DHAKA UNIVERSITY / BUET COLONIAL RED-BRICK HALL ("ঢাকা বিশ্ববিদ্যালয় / কার্জন হল ঐতিহ্য ভবন")
+ * Deep terracotta brick, white sandstone arched verandahs, stepped heritage cornice & cupola turret.
+ */
+export function createBuetCampusAcademicModel(
+  textures: ProceduralTexturePack,
+  variant = 0
+): THREE.Group {
+  const building = new THREE.Group();
+  building.add(createContactShadowMesh(textures.contactShadow, 21, 15));
+
+  if (!cachedBuetSign) {
+    cachedBuetSign = makeSignTex(
+      '#7f1d1d',
+      '#fef08a',
+      'ঢাকা বিশ্ববিদ্যালয় ও বুয়েট অ্যানেক্স',
+      'কলা ভবন • কেন্দ্রীয় গ্রন্থাগার • ঐতিহ্যবাহী ক্যাম্পাস',
+      'DHAKA UNIVERSITY & BUET HERITAGE HALL'
+    );
+  }
+
+  const redBrickMat = new THREE.MeshStandardMaterial({
+    map: textures.heritageBrick,
+    color: 0xa63a2b,
+    roughness: 0.86,
+  });
+  const whiteStoneMat = new THREE.MeshStandardMaterial({ color: 0xf1ece1, roughness: 0.72 });
+  const darkWoodMat = new THREE.MeshStandardMaterial({ color: 0x3b1f0e, roughness: 0.65 });
+  const copperDomeMat = new THREE.MeshStandardMaterial({
+    color: 0x115e59,
+    roughness: 0.42,
+    metalness: 0.45,
+  });
+
+  const width = 16.4;
+  const depth = 10.4;
+  const height = 10.8;
+
+  const main = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), redBrickMat);
+  main.position.set(0, height / 2, 0);
+  main.castShadow = true;
+  main.receiveShadow = true;
+  building.add(main);
+
+  // White sandstone horizontal dado bands & projecting porch
+  [0.6, 3.8, 7.2, height].forEach((by) => {
+    const band = new THREE.Mesh(new THREE.BoxGeometry(width + 0.35, 0.32, depth + 0.35), whiteStoneMat);
+    band.position.set(0, by, 0);
+    building.add(band);
+  });
+
+  const frontZ = depth / 2;
+  // Front arched colonnade pillars
+  [-6.8, -3.4, 0, 3.4, 6.8].forEach((px) => {
+    const col = new THREE.Mesh(new THREE.BoxGeometry(0.65, height - 0.5, 1.15), whiteStoneMat);
+    col.position.set(px, (height - 0.5) / 2, frontZ + 0.52);
+    building.add(col);
+  });
+
+  // Grand arched windows along front facade
+  [-5.1, -1.7, 1.7, 5.1].forEach((wx) => {
+    [2.1, 5.5, 8.8].forEach((wy) => {
+      const shutter = new THREE.Mesh(new THREE.BoxGeometry(1.75, 2.05, 0.14), darkWoodMat);
+      shutter.position.set(wx, wy, frontZ + 0.08);
+      building.add(shutter);
+    });
+  });
+
+  // Central octagonal Curzon-style roof pavilion & cupola dome
+  const pavilion = new THREE.Mesh(new THREE.BoxGeometry(5.2, 2.4, 4.6), redBrickMat);
+  pavilion.position.set(0, height + 1.2, 0);
+  building.add(pavilion);
+
+  const cupola = new THREE.Mesh(
+    new THREE.SphereGeometry(1.9, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55),
+    variant % 2 === 0 ? copperDomeMat : whiteStoneMat
+  );
+  cupola.position.set(0, height + 2.35, 0);
+  building.add(cupola);
+
+  const signMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(10.2, 2.1, 0.16),
+    new THREE.MeshBasicMaterial({ map: cachedBuetSign })
+  );
+  signMesh.position.set(0, 4.15, frontZ + 1.15);
+  building.add(signMesh);
+
+  return building;
+}
+
+/**
+ * 11. DHAKA HIGH-RISE CORPORATE BANK & TOWER ("মিরপুর রোড বহুতল বাণিজ্যিক ও ব্যাংক টাওয়ার")
+ * 7-8 story curtain-wall glass facade, composite terracotta/silver ACP cladding, ground ATM booth & rooftop antenna.
+ */
+export function createDhakaHighriseGlassBankModel(
+  textures: ProceduralTexturePack,
+  variant = 0
+): THREE.Group {
+  const building = new THREE.Group();
+  building.add(createContactShadowMesh(textures.contactShadow, 18, 14));
+
+  if (!cachedGlassBankSign) {
+    cachedGlassBankSign = makeSignTex(
+      '#0f172a',
+      '#38bdf8',
+      'ঢাকা কমার্শিয়াল ব্যাংক ও এটিএম বুথ',
+      'সায়েন্স ল্যাব — মিরপুর রোড কর্পোরেট টাওয়ার',
+      '24/7 FAST TRACK ATM • CORPORATE PLAZA'
+    );
+  }
+
+  const acpColors = [0x1e293b, 0x334155, 0x0f3b5c];
+  const glassColors = [0x0284c7, 0x0f766e, 0x1d4ed8];
+  const acpMat = new THREE.MeshStandardMaterial({
+    color: acpColors[Math.abs(variant) % acpColors.length],
+    roughness: 0.42,
+    metalness: 0.48,
+  });
+  const glassCurtainMat = new THREE.MeshStandardMaterial({
+    color: glassColors[Math.abs(variant) % glassColors.length],
+    roughness: 0.12,
+    metalness: 0.72,
+  });
+  const finMat = new THREE.MeshStandardMaterial({
+    color: variant % 2 === 0 ? 0xeab308 : 0xe2e8f0,
+    roughness: 0.35,
+    metalness: 0.65,
+  });
+
+  const width = 13.8;
+  const depth = 10.2;
+  const height = 21.5 + (Math.abs(variant) % 2) * 3.5;
+
+  const core = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), acpMat);
+  core.position.set(0, height / 2, 0);
+  core.castShadow = true;
+  core.receiveShadow = true;
+  building.add(core);
+
+  // Reflective curtain wall glass sheet front & sides
+  const glassFront = new THREE.Mesh(new THREE.BoxGeometry(width - 1.4, height - 4.5, depth + 0.18), glassCurtainMat);
+  glassFront.position.set(0, 3.8 + (height - 4.5) / 2, 0);
+  building.add(glassFront);
+
+  // Vertical architectural mullions
+  for (let fx = -width / 2 + 1.6; fx <= width / 2 - 1.6; fx += 2.6) {
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.24, height - 3.5, depth + 0.42), finMat);
+    fin.position.set(fx, 3.4 + (height - 3.5) / 2, 0);
+    building.add(fin);
+  }
+
+  // Ground-floor ATM / Bank Portico + signboard
+  const shopTex = textures.dhakaShopfrontGround[(Math.abs(variant) + 2) % textures.dhakaShopfrontGround.length];
+  const groundShop = new THREE.Mesh(
+    new THREE.PlaneGeometry(width - 1.2, 3.1),
+    new THREE.MeshStandardMaterial({ map: shopTex, roughness: 0.5 })
+  );
+  groundShop.position.set(0, 1.55, depth / 2 + 0.12);
+  building.add(groundShop);
+
+  const atmCanopy = new THREE.Mesh(new THREE.BoxGeometry(width - 2.0, 0.36, 2.2), finMat);
+  atmCanopy.position.set(0, 3.35, depth / 2 + 1.0);
+  building.add(atmCanopy);
+
+  const bankSign = new THREE.Mesh(
+    new THREE.BoxGeometry(10.6, 2.15, 0.18),
+    new THREE.MeshBasicMaterial({ map: cachedGlassBankSign })
+  );
+  bankSign.position.set(0, 4.65, depth / 2 + 0.25);
+  building.add(bankSign);
+
+  // Rooftop telecom mast & water tank
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.18, 4.6, 6), finMat);
+  mast.position.set(width * 0.22, height + 2.3, 0);
+  building.add(mast);
+
+  return building;
+}
+
+/**
+ * 12. DHAKA TIN-SHED & BAZAAR MARKET ROW ("হকার্স মার্কেট ও টিনশেড বাজার সারি")
+ * Classic low-rise weathered brick + pitched corrugated tin roofs, bustling signboard row & hanging awning poles.
+ */
+export function createDhakaTinShedBazaarRowModel(
+  textures: ProceduralTexturePack,
+  variant = 0
+): THREE.Group {
+  const building = new THREE.Group();
+  building.add(createContactShadowMesh(textures.contactShadow, 17, 11));
+
+  if (!cachedTinMarketSign) {
+    cachedTinMarketSign = makeSignTex(
+      '#14532d',
+      '#fde047',
+      'হকার্স মার্কেট ও টিনশেড পট্টি',
+      'জিন্স • টি-শার্ট • ঘড়ি • চশমা ও গিফট শপ',
+      'DHAKA HAWKERS BAZAAR ROW'
+    );
+  }
+
+  const plasterMat = new THREE.MeshStandardMaterial({
+    color: variant % 2 === 0 ? 0xd6c7b2 : 0xc5b8a5,
+    roughness: 0.9,
+  });
+  const tinMat = new THREE.MeshStandardMaterial({
+    map: textures.corrugatedTin,
+    color: variant % 2 === 0 ? 0x94a3b8 : 0x7c8a99,
+    roughness: 0.58,
+    metalness: 0.36,
+  });
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0xa16207, roughness: 0.85 });
+
+  const width = 15.6;
+  const depth = 8.4;
+  const wallH = 3.85;
+
+  const base = new THREE.Mesh(new THREE.BoxGeometry(width, wallH, depth), plasterMat);
+  base.position.set(0, wallH / 2, 0);
+  base.castShadow = true;
+  base.receiveShadow = true;
+  building.add(base);
+
+  // Pitched corrugated tin roof + front awning eave
+  const roofPitch = new THREE.Mesh(new THREE.BoxGeometry(width + 0.8, 0.14, depth + 2.6), tinMat);
+  roofPitch.position.set(0, wallH + 0.55, 0.55);
+  roofPitch.rotation.x = 0.2;
+  roofPitch.castShadow = true;
+  building.add(roofPitch);
+
+  // Bamboo / steel front support posts
+  [-6.8, -2.2, 2.2, 6.8].forEach((px) => {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 3.2, 6), poleMat);
+    post.position.set(px, 1.6, depth / 2 + 1.55);
+    building.add(post);
+  });
+
+  // Ground shop shutters & colorful garment hanging panel
+  const shopTex = textures.dhakaShopfrontGround[Math.abs(variant) % textures.dhakaShopfrontGround.length];
+  const shopMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(width - 0.8, 2.85),
+    new THREE.MeshStandardMaterial({ map: shopTex, roughness: 0.72 })
+  );
+  shopMesh.position.set(0, 1.48, depth / 2 + 0.06);
+  building.add(shopMesh);
+
+  const rack = new THREE.Mesh(
+    new THREE.BoxGeometry(3.4, 1.75, 0.14),
+    new THREE.MeshStandardMaterial({ map: textures.newMarketGarmentRack, roughness: 0.65 })
+  );
+  rack.position.set(variant % 2 === 0 ? -4.2 : 4.2, 1.45, depth / 2 + 1.0);
+  building.add(rack);
+
+  const signMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(9.6, 1.75, 0.14),
+    new THREE.MeshBasicMaterial({ map: cachedTinMarketSign })
+  );
+  signMesh.position.set(0, 3.4, depth / 2 + 1.48);
+  building.add(signMesh);
+
+  return building;
+}
+
+/**
+ * 13. DHAKA BUS TICKET COUNTER & CNG REFUELING CANOPY ("নিউ মার্কেট — সায়েন্স ল্যাব বাস কাউন্টার ও স্টেশন")
+ */
+export function createDhakaBusCounterPumpModel(
+  textures: ProceduralTexturePack,
+  variant = 0
+): THREE.Group {
+  const building = new THREE.Group();
+  building.add(createContactShadowMesh(textures.contactShadow, 18, 12));
+
+  if (!cachedBusCounterSign) {
+    cachedBusCounterSign = makeSignTex(
+      '#991b1b',
+      '#facc15',
+      'নিউ মার্কেট বাস কাউন্টার ও ফিলিং স্টেশন',
+      'এসি / নন-এসি টিকেট • সিএনজি ও পেট্রোল পাম্প',
+      'DHAKA COACH TERMINAL & FUEL STATION'
+    );
+  }
+
+  const canopyMat = new THREE.MeshStandardMaterial({
+    color: variant % 2 === 0 ? 0xdc2626 : 0x059669,
+    roughness: 0.42,
+    metalness: 0.28,
+  });
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.48 });
+  const concreteMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.78 });
+  const pumpMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.45 });
+
+  const width = 15.2;
+  const depth = 9.2;
+
+  // Rear ticket office booth block
+  const office = new THREE.Mesh(new THREE.BoxGeometry(width, 4.2, 3.6), concreteMat);
+  office.position.set(0, 2.1, -depth / 2 + 1.8);
+  office.castShadow = true;
+  office.receiveShadow = true;
+  building.add(office);
+
+  const shopTex = textures.dhakaShopfrontGround[(Math.abs(variant) + 1) % textures.dhakaShopfrontGround.length];
+  const counterFront = new THREE.Mesh(
+    new THREE.PlaneGeometry(width - 1.0, 2.8),
+    new THREE.MeshStandardMaterial({ map: shopTex, roughness: 0.65 })
+  );
+  counterFront.position.set(0, 1.5, -depth / 2 + 3.65);
+  building.add(counterFront);
+
+  // Towering fueling / bus-bay canopy over paved bay
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(width + 0.6, 0.95, 6.2), canopyMat);
+  canopy.position.set(0, 4.85, 1.6);
+  canopy.castShadow = true;
+  building.add(canopy);
+
+  const canopyStripe = new THREE.Mesh(new THREE.BoxGeometry(width + 0.68, 0.22, 6.28), trimMat);
+  canopyStripe.position.set(0, 4.42, 1.6);
+  building.add(canopyStripe);
+
+  // Canopy pillars + dispenser islands
+  [-5.2, 0, 5.2].forEach((px) => {
+    const col = new THREE.Mesh(new THREE.BoxGeometry(0.45, 4.4, 0.45), concreteMat);
+    col.position.set(px, 2.2, 1.6);
+    building.add(col);
+  });
+  [-2.6, 2.6].forEach((dx) => {
+    const dispenser = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.65, 0.65), pumpMat);
+    dispenser.position.set(dx, 0.825, 1.6);
+    building.add(dispenser);
+  });
+
+  const signMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(11.4, 1.8, 0.18),
+    new THREE.MeshBasicMaterial({ map: cachedBusCounterSign })
+  );
+  signMesh.position.set(0, 4.85, 4.78);
+  building.add(signMesh);
+
+  return building;
+}
+
+export type OpenShopKind = 'pharmacy' | 'mudi' | 'recharge' | 'hotel';
+
+/**
+ * 14. WALK-IN OPEN-SHUTTER DHAKA ROADSIDE SHOP ("খোলা দোকান")
+ * Rolled-up corrugated metal shutter drum, open walk-in illuminated room interior,
+ * stocked merchandise shelves, open glass/wood counter, hanging snack packets,
+ * shopkeeper inside, and glowing "খোলা দোকান" signboard.
+ */
+export function createDhakaOpenShopModel(
+  textures: ProceduralTexturePack,
+  variant = 0
+): { mesh: THREE.Group; kind: OpenShopKind } {
+  const kinds: OpenShopKind[] = ['pharmacy', 'mudi', 'recharge', 'hotel'];
+  const idx = ((variant % kinds.length) + kinds.length) % kinds.length;
+  const kind = kinds[idx];
+
+  const shop = new THREE.Group();
+  shop.add(createContactShadowMesh(textures.contactShadow, 8.6, 7.2));
+
+  const wallColor =
+    kind === 'pharmacy'
+      ? 0xe2e8f0
+      : kind === 'mudi'
+        ? 0xfef3c7
+        : kind === 'recharge'
+          ? 0xdbeafe
+          : 0xfde68a;
+  const accentColor =
+    kind === 'pharmacy'
+      ? 0x059669
+      : kind === 'mudi'
+        ? 0xd97706
+        : kind === 'recharge'
+          ? 0xdb2777
+          : 0xb91c1c;
+
+  const outerWallMat = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.8 });
+  const innerWallMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.72 });
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.65 });
+  const shutterMat = new THREE.MeshStandardMaterial({
+    map: textures.corrugatedTin,
+    color: 0x64748b,
+    roughness: 0.45,
+    metalness: 0.6,
+  });
+  const counterMat = new THREE.MeshStandardMaterial({
+    color: kind === 'pharmacy' ? 0x0f766e : kind === 'recharge' ? 0x1e293b : 0x78350f,
+    roughness: 0.55,
+  });
+  const glassTopMat = new THREE.MeshStandardMaterial({
+    color: 0xbae6fd,
+    roughness: 0.15,
+    metalness: 0.35,
+  });
+  const tubeLightMat = new THREE.MeshBasicMaterial({ color: 0xfef9c3 });
+
+  const w = 6.4;
+  const d = 4.6;
+  const h = 3.55;
+
+  // Hollow Open-Front Room Shell (Back wall + Left/Right side walls + Ceiling + Tiled Floor)
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(w, 0.14, d), floorMat);
+  floor.position.set(0, 0.07, 0);
+  floor.receiveShadow = true;
+  shop.add(floor);
+
+  const backWall = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.28), innerWallMat);
+  backWall.position.set(0, h / 2, -d / 2 + 0.14);
+  shop.add(backWall);
+
+  [-w / 2 + 0.16, w / 2 - 0.16].forEach((sx) => {
+    const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.32, h, d), outerWallMat);
+    sideWall.position.set(sx, h / 2, 0);
+    sideWall.castShadow = true;
+    shop.add(sideWall);
+  });
+
+  // Roof slab + compact upper 2nd floor veranda/flat over the open ground shop
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, 0.34, d + 0.6), outerWallMat);
+  roof.position.set(0, h + 0.12, 0.15);
+  shop.add(roof);
+
+  const upperBlock = new THREE.Mesh(
+    new THREE.BoxGeometry(w, 2.55, d - 0.3),
+    new THREE.MeshStandardMaterial({
+      map: textures.heritageBrick,
+      color: 0xe6d4c0,
+      roughness: 0.85,
+    })
+  );
+  upperBlock.position.set(0, h + 1.5, -0.15);
+  shop.add(upperBlock);
+
+  // Rolled-up Corrugated Steel Shutter Drum above the completely open doorway
+  const shutterDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, w - 0.6, 10), shutterMat);
+  shutterDrum.rotation.z = Math.PI / 2;
+  shutterDrum.position.set(0, h - 0.22, d / 2 - 0.05);
+  shop.add(shutterDrum);
+
+  // Bright indoor fluorescent tube light illuminating the open shop interior
+  const tube = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.08, 0.14), tubeLightMat);
+  tube.position.set(0, h - 0.22, -0.2);
+  shop.add(tube);
+
+  // Back Merchandise Shelves packed with colorful goods
+  const shelfMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.65 });
+  const itemColors =
+    kind === 'pharmacy'
+      ? [0xef4444, 0x22c55e, 0x3b82f6, 0xffffff]
+      : kind === 'mudi'
+        ? [0xf97316, 0xfacc15, 0xdc2626, 0x16a34a]
+        : kind === 'recharge'
+          ? [0x0ea5e9, 0xec4899, 0xfacc15, 0x1e293b]
+          : [0xd97706, 0xf59e0b, 0xef4444, 0xfef3c7];
+
+  for (let row = 0; row < 3; row++) {
+    const sy = 0.75 + row * 0.72;
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(w - 1.0, 0.08, 0.52), shelfMat);
+    shelf.position.set(0, sy, -d / 2 + 0.56);
+    shop.add(shelf);
+
+    for (let col = 0; col < 6; col++) {
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(0.42, 0.34, 0.26),
+        new THREE.MeshStandardMaterial({
+          color: itemColors[(row + col) % itemColors.length],
+          roughness: 0.45,
+        })
+      );
+      box.position.set(-2.0 + col * 0.8, sy + 0.21, -d / 2 + 0.55);
+      shop.add(box);
+    }
+  }
+
+  // Open Front Serving Counter + Display Glass Case
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.96, 0.72), counterMat);
+  counter.position.set(0, 0.52, 0.78);
+  counter.castShadow = true;
+  shop.add(counter);
+
+  const counterTop = new THREE.Mesh(new THREE.BoxGeometry(4.46, 0.06, 0.78), glassTopMat);
+  counterTop.position.set(0, 1.03, 0.78);
+  shop.add(counterTop);
+
+  // Shopkeeper inside behind the counter!
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.72 });
+  const shirtMat = new THREE.MeshStandardMaterial({
+    color: kind === 'pharmacy' ? 0xf8fafc : accentColor,
+    roughness: 0.65,
+  });
+  const keeperBody = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.62, 0.28), shirtMat);
+  keeperBody.position.set(-0.2, 1.25, -0.05);
+  shop.add(keeperBody);
+  const keeperHead = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), skinMat);
+  keeperHead.position.set(-0.2, 1.72, -0.05);
+  shop.add(keeperHead);
+
+  // Hanging colorful snack/chips sachets ("দোকানে ঝোলানো চিপস ও শ্যাম্পুর প্যাকেট") in open doorway
+  if (kind === 'mudi' || kind === 'recharge') {
+    for (let p = 0; p < 5; p++) {
+      const sachet = new THREE.Mesh(
+        new THREE.BoxGeometry(0.24, 0.34, 0.04),
+        new THREE.MeshStandardMaterial({ color: itemColors[p % itemColors.length], roughness: 0.4 })
+      );
+      sachet.position.set(-2.35 + (p < 2 ? p * 0.28 : 4.1 + (p - 2) * 0.28), 2.32 - (p % 2) * 0.36, d / 2 - 0.15);
+      shop.add(sachet);
+    }
+  }
+
+  // Slanted Front Awning + Illuminated "খোলা দোকান" Signboard
+  const awning = new THREE.Mesh(
+    new THREE.BoxGeometry(w + 0.4, 0.12, 1.6),
+    new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.55 })
+  );
+  awning.position.set(0, 3.12, d / 2 + 0.75);
+  awning.rotation.x = 0.22;
+  shop.add(awning);
+
+  const signMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(w - 0.2, 1.08, 0.14),
+    new THREE.MeshBasicMaterial({ map: textures.openShopSigns[idx] })
+  );
+  signMesh.position.set(0, 3.92, d / 2 + 0.16);
+  shop.add(signMesh);
+
+  // Subtle green sidewalk welcome floor strip indicating open walk-in entrance
+  const matStrip = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.8, 0.75),
+    new THREE.MeshBasicMaterial({ color: 0x22c55e })
+  );
+  matStrip.rotation.x = -Math.PI / 2;
+  matStrip.position.set(0, 0.15, d / 2 + 0.45);
+  shop.add(matStrip);
+
+  return { mesh: shop, kind };
+}
+

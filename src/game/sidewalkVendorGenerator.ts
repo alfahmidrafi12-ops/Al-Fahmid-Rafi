@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ProceduralTexturePack } from './textures';
+import { BatchMaterialCache, mergeStaticGroupByMaterial } from './meshBatcher';
 
 export type SidewalkStallCategory = 'veggie' | 'chai' | 'flower' | 'vendor';
 
@@ -14,6 +15,8 @@ export interface ProceduralSidewalkStallEntry {
 
 export interface ProceduralSidewalkCallbacks {
   createShobjiStall: () => THREE.Group;
+  batchCache?: BatchMaterialCache;
+  skipStaticFootpathStalls?: boolean;
 }
 
 /**
@@ -619,6 +622,8 @@ export function createUniqueStreetVendorModel(
   return group;
 }
 
+const stallProtoCacheMap = new WeakMap<BatchMaterialCache, Map<string, THREE.Group>>();
+
 /**
  * Main Procedural Sidewalk Population Script
  * Populates BOTH:
@@ -686,8 +691,17 @@ export function populateSidewalksForCell(
     return createUniqueStreetVendorModel(arch, variantSeed, textures, rng);
   };
 
+  let protoPool: Map<string, THREE.Group> | undefined;
+  if (callbacks.batchCache) {
+    protoPool = stallProtoCacheMap.get(callbacks.batchCache);
+    if (!protoPool) {
+      protoPool = new Map<string, THREE.Group>();
+      stallProtoCacheMap.set(callbacks.batchCache, protoPool);
+    }
+  }
+
   // A. Smashable Curb-Shoulder Stalls (16 per cell, 4 quadrants x 4 spots at ±7.0)
-  // Diverse weighted mix of Shobji, Chai Tongs, Flower Shops & Street Vendors
+  // Clones pre-batched stall prototypes (12 cached variants max) for near-instant chunk creation!
   const curbCategories: SidewalkStallCategory[] = ['veggie', 'chai', 'flower', 'vendor'];
   ([-1, 1] as const).forEach((sx) => {
     ([-1, 1] as const).forEach((sz) => {
@@ -702,7 +716,25 @@ export function populateSidewalksForCell(
       spots.forEach((sp, idx) => {
         const cat = curbCategories[(qHash + idx + Math.floor(rng() * 4)) % curbCategories.length];
         const variantSeed = qHash + idx * 3 + Math.floor(rng() * 12);
-        const mesh = spawnProceduralModel(cat, variantSeed);
+        const protoSub = cat === 'vendor' ? variantSeed % 4 : variantSeed % 2;
+        const protoKey = `${cat}_${protoSub}`;
+
+        let mesh: THREE.Group;
+        if (protoPool && callbacks.batchCache) {
+          let proto = protoPool.get(protoKey);
+          if (!proto) {
+            const rawMesh = spawnProceduralModel(cat, protoSub);
+            proto = mergeStaticGroupByMaterial(rawMesh, callbacks.batchCache, false);
+            protoPool.set(protoKey, proto);
+          }
+          mesh = proto.clone();
+        } else {
+          const rawMesh = spawnProceduralModel(cat, variantSeed);
+          mesh = callbacks.batchCache
+            ? mergeStaticGroupByMaterial(rawMesh, callbacks.batchCache, false)
+            : rawMesh;
+        }
+
         const jitterScale = 0.92 + rng() * 0.14;
         mesh.scale.setScalar(jitterScale);
         mesh.position.set(sp.x, 0, sp.z);
@@ -720,6 +752,10 @@ export function populateSidewalksForCell(
       });
     });
   });
+
+  if (callbacks.skipStaticFootpathStalls) {
+    return smashableStalls;
+  }
 
   // B. Elevated Footpath Sidewalk Population (y = 0.26 flush on sidewalk slab [8.55..11.75])
   // Populates N-S & E-W footpaths with Chai Stalls, Flower Shops, and Unique Street Vendors

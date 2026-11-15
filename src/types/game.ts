@@ -71,6 +71,14 @@ export interface TrafficSignalHudInfo {
   crossingNameBn: string;
 }
 
+export interface BreakingNewsItem {
+  id: number;
+  category: 'ACCIDENT' | 'MOB_CHASE' | 'CHAOS';
+  headlineBn: string;
+  tickerBn: string;
+  locationBn: string;
+}
+
 export interface HudSnapshot {
   money: number;
   highScore: number;
@@ -88,6 +96,7 @@ export interface HudSnapshot {
   weather: WeatherType;
   roadGrip: number;
   trafficSignal?: TrafficSignalHudInfo;
+  breakingNews?: BreakingNewsItem;
 }
 
 export interface ScreenPopup {

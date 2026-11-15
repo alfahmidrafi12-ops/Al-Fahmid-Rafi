@@ -12,6 +12,7 @@ import {
   AUDIO_DIPJOL_B64,
   AUDIO_HISAB_BUJHONA_B64,
 } from './newAudioData';
+import { dhakaRadio, DhakaRadioStationId } from './dhakaRadio';
 
 function base64ToArrayBuffer(dataUri: string): ArrayBuffer {
   const base64 = dataUri.split(',')[1] || dataUri;
@@ -73,8 +74,11 @@ class SoundEngine {
         this.ctx = new AudioCtx();
       }
     }
-    if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume().catch(() => {});
+    if (this.ctx) {
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+      dhakaRadio.attachContext(this.ctx);
     }
     this.decodePendingBuffers();
   }
@@ -170,6 +174,7 @@ class SoundEngine {
   private playBufferOrElement(key: string, volume = 1.0): void {
     if (this.muted) return;
     this.init();
+    dhakaRadio.duck(2400);
 
     // 1. Play with Web Audio if decoded buffer is available
     let playedWithWebAudio = false;
@@ -219,6 +224,7 @@ class SoundEngine {
 
   public setMuted(muted: boolean): void {
     this.muted = muted;
+    dhakaRadio.setMuted(muted);
     if (muted) {
       Object.keys(this.activeSources).forEach((k) => {
         if (this.activeSources[k]) {
@@ -825,24 +831,12 @@ class SoundEngine {
   }
 
   /* -------------------------------------------------------------
-   * DHAKA CITY AMBIENCE & BACKGROUND TRAFFIC RADIO (এফএম ৯৮.৪)
+   * DHAKA CITY AMBIENCE & DHAKA FM / RADIO SYSTEM
    * ------------------------------------------------------------- */
-  private radioStation: 'FM_98_4' | 'FOLK' | 'OFF' = 'FM_98_4';
-  private radioTimerId: number | null = null;
-  private folkTimerId: number | null = null;
   private ambientStreetTimerId: number | null = null;
   private ambientNoiseSource: AudioBufferSourceNode | null = null;
   private ambientGainNode: GainNode | null = null;
   private ambientHumOsc: OscillatorNode | null = null;
-  private lastBulletinIndex = 0;
-
-  private static TRAFFIC_BULLETINS: string[] = [
-    'শ্রোতা বন্ধুরা! ৯৮.৪ ঢাকা এফএম ট্রাফিক বুলেটিন: সদরঘাট টু পল্টন মোড়ে তীব্র যানজট! রিকশা চালকদের মগবাজার ফ্লাইওভার ব্যবহারের অনুরোধ করা হচ্ছে।',
-    'লাইভ ঢাকা ট্রাফিক: মহাখালী ও ফার্মগেট সিগন্যালে সিএনজি ও রিকশার হুটোপুটি! ডানে বামে সাবধানে মোড় নিন।',
-    'জরুরি ট্রাফিক সতর্কতা: গুলিস্তান-মতিঝিল রুটে দূরপাল্লার বাস আটকে আছে! গতি নিয়ন্ত্রণে রাখুন।',
-    'কাওরান বাজার সবজির আড়তের সামনে মালামাল ওঠানামার কারণে ধীরগতি! সাবধানে ওভারটেক করুন।',
-    'বিজয় সরণি ও মিরপুর রোডে যানবাহনের দীর্ঘ সারি! ক্রিং ক্রিং বেল বাজিয়ে সতর্কভাবে চালান।'
-  ];
 
   /** Subtle distant Dhaka street audio cue (soft faraway bell chime or muffled traffic horn) */
   private playDistantCityCue(): void {
@@ -886,10 +880,13 @@ class SoundEngine {
     } catch {}
   }
 
-  /** Starts the authentic Dhaka street ambience (generator hum + low distant traffic rumble + street cues) */
+  /** Starts the authentic Dhaka street ambience + Dhaka FM Radio background system */
   public startAmbience(): void {
     this.init();
-    if (!this.ctx || this.muted || this.ambientGainNode) return;
+    if (!this.ctx || this.muted) return;
+
+    dhakaRadio.setDrivingActive(true);
+    if (this.ambientGainNode) return;
 
     try {
       // 1. Ambient low-frequency city traffic drone (pink/brown noise filtered)
@@ -924,7 +921,7 @@ class SoundEngine {
       this.ambientHumOsc.connect(humGain);
 
       this.ambientGainNode = this.ctx.createGain();
-      this.ambientGainNode.gain.setValueAtTime(0.18, this.ctx.currentTime);
+      this.ambientGainNode.gain.setValueAtTime(0.16, this.ctx.currentTime);
 
       this.ambientNoiseSource.connect(rumbleFilter);
       rumbleFilter.connect(this.ambientGainNode);
@@ -941,13 +938,12 @@ class SoundEngine {
           this.playDistantCityCue();
         }
       }, 7200);
-
-      this.scheduleRadioCycle();
     } catch {}
   }
 
-  /** Stops background city ambience */
+  /** Stops background city ambience & Dhaka FM radio playback */
   public stopAmbience(): void {
+    dhakaRadio.setDrivingActive(false);
     if (this.ambientGainNode && this.ctx) {
       try {
         this.ambientGainNode.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
@@ -967,217 +963,26 @@ class SoundEngine {
       window.clearInterval(this.ambientStreetTimerId);
       this.ambientStreetTimerId = null;
     }
-    if (this.radioTimerId) {
-      window.clearInterval(this.radioTimerId);
-      this.radioTimerId = null;
-    }
-    if (this.folkTimerId) {
-      window.clearInterval(this.folkTimerId);
-      this.folkTimerId = null;
-    }
   }
 
-  /** Schedules periodic live traffic radio bulletins or folk beat grooves */
-  private scheduleRadioCycle(): void {
-    if (this.radioTimerId) window.clearInterval(this.radioTimerId);
-    if (this.folkTimerId) window.clearInterval(this.folkTimerId);
-
-    if (this.radioStation === 'FM_98_4') {
-      // First announcement after 4 seconds, then every 24 seconds
-      window.setTimeout(() => {
-        if (this.radioStation === 'FM_98_4' && !this.muted) {
-          this.broadcastDhakaTrafficUpdate();
-        }
-      }, 4000);
-
-      this.radioTimerId = window.setInterval(() => {
-        if (this.radioStation === 'FM_98_4' && !this.muted) {
-          this.broadcastDhakaTrafficUpdate();
-        }
-      }, 26000);
-    } else if (this.radioStation === 'FOLK') {
-      let step = 0;
-      this.folkTimerId = window.setInterval(() => {
-        if (this.radioStation === 'FOLK' && !this.muted) {
-          this.playProceduralFolkRhythm(step++);
-        }
-      }, 340);
-    }
-  }
-
-  /** Plays FM radio tuner static crackle burst */
-  public playRadioStaticBurst(): void {
+  public toggleRadio(): DhakaRadioStationId {
     this.init();
-    if (!this.ctx || this.muted) return;
-    const now = this.ctx.currentTime;
-    const len = Math.floor(this.ctx.sampleRate * 0.18);
-    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * 0.3;
-
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-
-    const bpf = this.ctx.createBiquadFilter();
-    bpf.type = 'bandpass';
-    bpf.frequency.setValueAtTime(2400, now);
-    bpf.Q.setValueAtTime(2.5, now);
-
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.12, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
-
-    src.connect(bpf);
-    bpf.connect(gain);
-    gain.connect(this.ctx.destination);
-    src.start(now);
+    return dhakaRadio.cycleStation();
   }
 
-  /** Plays iconic retro FM radio jingle chime (C5 - G5 - E5 - C6) */
-  public playRadioJingle(): void {
+  public setRadioStation(station: DhakaRadioStationId): void {
     this.init();
-    if (!this.ctx || this.muted) return;
-    const now = this.ctx.currentTime;
-    const jingleNotes = [523.25, 783.99, 659.25, 1046.5]; // C5, G5, E5, C6
-    jingleNotes.forEach((f, idx) => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      const t = now + idx * 0.12;
-
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(f, t);
-
-      gain.gain.setValueAtTime(0.24, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
-
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.3);
-    });
+    dhakaRadio.setStation(station);
   }
 
-  /** Broadcasts a live Dhaka traffic update */
-  public broadcastDhakaTrafficUpdate(): void {
-    if (this.muted || this.radioStation !== 'FM_98_4') return;
-    this.playRadioStaticBurst();
-    this.playRadioJingle();
-
-    const bulletin = SoundEngine.TRAFFIC_BULLETINS[this.lastBulletinIndex % SoundEngine.TRAFFIC_BULLETINS.length];
-    this.lastBulletinIndex++;
-
-    // Try SpeechSynthesis if supported in browser with Bengali voice or standard speaker
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-        const utter = new SpeechSynthesisUtterance(bulletin);
-        utter.rate = 1.12;
-        utter.pitch = 1.05;
-        utter.volume = this.muted ? 0 : 0.85;
-
-        // Try to select Bengali voice if available on system
-        const voices = window.speechSynthesis.getVoices();
-        const bnVoice = voices.find((v) => v.lang.startsWith('bn') || v.lang.includes('BD'));
-        if (bnVoice) {
-          utter.voice = bnVoice;
-        }
-        window.speechSynthesis.speak(utter);
-      } catch {}
-    }
-  }
-
-  /** Procedural Bangladeshi folk rhythm loop (Dotara plucks + Tabla bols) */
-  private playProceduralFolkRhythm(step: number): void {
-    if (!this.ctx || this.muted) return;
-    const now = this.ctx.currentTime;
-    const isTablaDownbeat = step % 4 === 0;
-    const isTablaUpbeat = step % 2 === 1;
-
-    // Tabla Dagga / Bayan bass thud
-    if (isTablaDownbeat) {
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(95, now);
-      osc.frequency.exponentialRampToValueAtTime(45, now + 0.16);
-      gain.gain.setValueAtTime(0.25, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.2);
-    }
-
-    // Tabla Dayan crisp rim snap (টিন/না)
-    if (isTablaUpbeat) {
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(320, now);
-      gain.gain.setValueAtTime(0.12, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.1);
-    }
-
-    // Dotara pluck melody
-    const dotaraNotes = [293.66, 329.63, 392.00, 440.00, 523.25, 587.33];
-    const noteIdx = (step * 2 + (step % 3)) % dotaraNotes.length;
-    const oscD = this.ctx.createOscillator();
-    const gainD = this.ctx.createGain();
-    oscD.type = 'sawtooth';
-    oscD.frequency.setValueAtTime(dotaraNotes[noteIdx], now);
-
-    const bpf = this.ctx.createBiquadFilter();
-    bpf.type = 'bandpass';
-    bpf.frequency.setValueAtTime(1400, now);
-    bpf.Q.setValueAtTime(3.0, now);
-
-    gainD.gain.setValueAtTime(0.08, now);
-    gainD.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-
-    oscD.connect(bpf);
-    bpf.connect(gainD);
-    gainD.connect(this.ctx.destination);
-    oscD.start(now);
-    oscD.stop(now + 0.16);
-  }
-
-  /** Switches between Radio Stations */
-  public toggleRadio(): 'FM_98_4' | 'FOLK' | 'OFF' {
-    if (this.radioStation === 'FM_98_4') {
-      this.radioStation = 'FOLK';
-    } else if (this.radioStation === 'FOLK') {
-      this.radioStation = 'OFF';
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-    } else {
-      this.radioStation = 'FM_98_4';
-    }
-
-    this.playRadioStaticBurst();
-    this.scheduleRadioCycle();
-    return this.radioStation;
-  }
-
-  public setRadioStation(station: 'FM_98_4' | 'FOLK' | 'OFF'): void {
-    this.radioStation = station;
-    this.playRadioStaticBurst();
-    this.scheduleRadioCycle();
-  }
-
-  public getRadioStation(): 'FM_98_4' | 'FOLK' | 'OFF' {
-    return this.radioStation;
+  public getRadioStation(): DhakaRadioStationId {
+    return dhakaRadio.getSnapshot().stationId;
   }
 
   public getRadioStationLabel(): string {
-    if (this.radioStation === 'FM_98_4') return 'ঢাকা এফএম ৯৮.৪ [ট্রাফিক]';
-    if (this.radioStation === 'FOLK') return 'পুরান ঢাকা সুর [ফোক]';
-    return 'রেডিও বন্ধ';
+    const snap = dhakaRadio.getSnapshot();
+    if (snap.stationId === 'OFF') return 'রেডিও বন্ধ';
+    return `${snap.frequencyLabel} · ${snap.stationNameBn}`;
   }
 }
 

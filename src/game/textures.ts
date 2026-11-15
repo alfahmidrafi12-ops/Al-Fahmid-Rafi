@@ -2,8 +2,10 @@ import * as THREE from 'three';
 
 export interface ProceduralTexturePack {
   asphalt: THREE.CanvasTexture;
+  asphaltBump: THREE.CanvasTexture;
   curb: THREE.CanvasTexture;
   sidewalk: THREE.CanvasTexture;
+  sidewalkBump: THREE.CanvasTexture;
   rickshawArt: THREE.CanvasTexture;
   rickshawHoodVariants: THREE.CanvasTexture[];
   rickshawRearArt: THREE.CanvasTexture;
@@ -29,6 +31,19 @@ export interface ProceduralTexturePack {
   lungis: THREE.CanvasTexture[];
   zebraCrossing: THREE.CanvasTexture;
   trafficSignDmp: THREE.CanvasTexture;
+  wallGraffitis: THREE.CanvasTexture[];
+  streetAlpana: THREE.CanvasTexture;
+  streetBanners: THREE.CanvasTexture[];
+  newMarketArchSign: THREE.CanvasTexture;
+  newMarketOverbridgeBanner: THREE.CanvasTexture;
+  newMarketGarmentRack: THREE.CanvasTexture;
+  marketStripedAwning: THREE.CanvasTexture;
+  nilkhetBooksTex: THREE.CanvasTexture;
+  billboards: THREE.CanvasTexture[];
+  verticalBanners: THREE.CanvasTexture[];
+  openShopSigns: THREE.CanvasTexture[];
+  electionPosters: THREE.CanvasTexture[];
+  electionPosterRope: THREE.CanvasTexture;
   disposeAll: () => void;
 }
 
@@ -50,53 +65,113 @@ function finalizeColorTexture(
   return tex;
 }
 
+function finalizeDataTexture(
+  canvas: HTMLCanvasElement,
+  maxAnisotropy: number,
+  repeatX = 1,
+  repeatY = 1
+): THREE.CanvasTexture {
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.anisotropy = maxAnisotropy;
+  if (repeatX > 1 || repeatY > 1) {
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(repeatX, repeatY);
+  }
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export function createProceduralTextures(maxAnisotropy: number): ProceduralTexturePack {
   const allTextures: THREE.Texture[] = [];
 
-  // 1. Worn Purana Dhaka Asphalt Road with realistic aggregate contrast & lane markings (512x512)
+  // 1. Authentic Bangladesh Dhaka Asphalt Road (Bitumen patches, dusty shoulders, alligator cracks & Bangla stencil)
   const roadCanvas = document.createElement('canvas');
   roadCanvas.width = 512;
   roadCanvas.height = 512;
   const rCtx = roadCanvas.getContext('2d')!;
-  rCtx.fillStyle = '#282e37';
+  rCtx.fillStyle = '#252a32';
   rCtx.fillRect(0, 0, 512, 512);
 
-  // Road surface mineral aggregate texture
-  for (let i = 0; i < 6500; i++) {
-    const x = Math.random() * 512;
-    const y = Math.random() * 512;
-    const shade = 34 + Math.floor(Math.random() * 34);
-    rCtx.fillStyle = `rgb(${shade},${shade + 3},${shade + 7})`;
-    rCtx.fillRect(x, y, 2, 2);
+  // Dusty Dhaka roadside shoulder grime along both curb gutters
+  const leftDust = rCtx.createLinearGradient(0, 0, 38, 0);
+  leftDust.addColorStop(0, 'rgba(116, 102, 82, 0.58)');
+  leftDust.addColorStop(1, 'rgba(116, 102, 82, 0)');
+  rCtx.fillStyle = leftDust;
+  rCtx.fillRect(0, 0, 38, 512);
+
+  const rightDust = rCtx.createLinearGradient(474, 0, 512, 0);
+  rightDust.addColorStop(0, 'rgba(116, 102, 82, 0)');
+  rightDust.addColorStop(1, 'rgba(116, 102, 82, 0.58)');
+  rCtx.fillStyle = rightDust;
+  rCtx.fillRect(474, 0, 38, 512);
+
+  // Road surface mineral aggregate texture + paired linear bump canvas
+  const roadBumpCanvas = document.createElement('canvas');
+  roadBumpCanvas.width = 256;
+  roadBumpCanvas.height = 256;
+  const rbCtx = roadBumpCanvas.getContext('2d')!;
+  rbCtx.fillStyle = '#808080';
+  rbCtx.fillRect(0, 0, 256, 256);
+
+  const shades = ['#1e232b', '#282e38', '#333a46', '#3d4554'];
+  for (let i = 0; i < 2000; i++) {
+    const rx = Math.random() * 512;
+    const ry = Math.random() * 512;
+    rCtx.fillStyle = shades[i & 3];
+    rCtx.fillRect(rx, ry, 3, 3);
+    rbCtx.fillStyle = i % 2 === 0 ? '#9c9c9c' : '#646464';
+    rbCtx.fillRect(rx * 0.5, ry * 0.5, 2, 2);
   }
 
-  // Worn tire rut tracks in left, center, right lanes
-  rCtx.fillStyle = 'rgba(18, 22, 28, 0.38)';
-  rCtx.fillRect(92, 0, 78, 512);
-  rCtx.fillRect(214, 0, 82, 512);
-  rCtx.fillRect(340, 0, 78, 512);
+  // Worn tire rut tracks in Dhaka left & right multi-vehicle lanes
+  rCtx.fillStyle = 'rgba(14, 17, 22, 0.42)';
+  rCtx.fillRect(88, 0, 80, 512);
+  rCtx.fillRect(214, 0, 84, 512);
+  rCtx.fillRect(344, 0, 80, 512);
 
-  // White border lines
-  rCtx.fillStyle = '#d4dce6';
-  rCtx.fillRect(16, 0, 8, 512);
-  rCtx.fillRect(488, 0, 8, 512);
-
-  // Yellow center divider dashed lines
-  rCtx.fillStyle = '#eab308';
-  for (let y = 20; y < 512; y += 128) {
-    rCtx.fillRect(250, y, 12, 74);
-  }
-
-  // Subtle weathered bitumen patch
-  rCtx.fillStyle = '#20252d';
+  // Authentic cold-mix bitumen repair patches + hairline tarmac cracks
+  rCtx.fillStyle = '#1b1f26';
   rCtx.beginPath();
-  rCtx.ellipse(140, 260, 42, 26, 0.2, 0, Math.PI * 2);
+  rCtx.ellipse(134, 245, 44, 28, 0.18, 0, Math.PI * 2);
   rCtx.fill();
+  rCtx.beginPath();
+  rCtx.ellipse(386, 98, 34, 22, -0.25, 0, Math.PI * 2);
+  rCtx.fill();
+  rbCtx.fillStyle = '#545454';
+  rbCtx.beginPath();
+  rbCtx.ellipse(67, 122, 22, 14, 0.18, 0, Math.PI * 2);
+  rbCtx.fill();
+
+  rCtx.strokeStyle = '#12151a';
+  rCtx.lineWidth = 2;
+  rCtx.beginPath();
+  rCtx.moveTo(96, 365);
+  rCtx.lineTo(132, 392);
+  rCtx.lineTo(118, 434);
+  rCtx.moveTo(355, 290);
+  rCtx.lineTo(392, 326);
+  rCtx.stroke();
+
+  // Slightly weathered White edge lines
+  rCtx.fillStyle = '#d4dce6';
+  rCtx.fillRect(22, 0, 7, 512);
+  rCtx.fillRect(483, 0, 7, 512);
+
+  // Bold Dhaka Yellow dashed center dividers with reflective cat's-eye studs
+  for (let y = 20; y < 512; y += 128) {
+    rCtx.fillStyle = '#eab308';
+    rCtx.fillRect(249, y, 14, 72);
+    rCtx.fillStyle = '#fef08a';
+    rCtx.fillRect(253, y + 84, 6, 8);
+  }
 
   const asphalt = finalizeColorTexture(roadCanvas, maxAnisotropy, 1, 8);
-  allTextures.push(asphalt);
+  const asphaltBump = finalizeDataTexture(roadBumpCanvas, maxAnisotropy, 1, 8);
+  allTextures.push(asphalt, asphaltBump);
 
-  // 2. Dhaka Yellow & Black Striped Curb
+  // 2. Dhaka Yellow & Black Striped Curb with bottom road grime
   const curbCanvas = document.createElement('canvas');
   curbCanvas.width = 256;
   curbCanvas.height = 256;
@@ -104,38 +179,83 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   for (let y = 0; y < 256; y += 64) {
     cCtx.fillStyle = (y / 64) % 2 === 0 ? '#eab308' : '#18181b';
     cCtx.fillRect(0, y, 256, 64);
+    cCtx.fillStyle = 'rgba(15, 23, 42, 0.25)';
+    cCtx.fillRect(0, y + 60, 256, 4);
   }
-  cCtx.fillStyle = 'rgba(255,255,255,0.08)';
-  cCtx.fillRect(0, 0, 36, 256);
+  cCtx.fillStyle = 'rgba(255,255,255,0.12)';
+  cCtx.fillRect(0, 0, 28, 256);
+  cCtx.fillStyle = 'rgba(120, 95, 65, 0.32)';
+  cCtx.fillRect(216, 0, 40, 256);
   const curb = finalizeColorTexture(curbCanvas, maxAnisotropy, 1, 24);
   allTextures.push(curb);
 
-  // 3. Concrete Sidewalk Pavers (warm Dhaka footpath grey concrete)
+  // 3. Authentic Dhaka City Corporation (DSCC/DNCC) Red-Ochre & Concrete Interlocking Footpath Pavers + Drainage Grates
   const swCanvas = document.createElement('canvas');
   swCanvas.width = 256;
   swCanvas.height = 256;
   const swCtx = swCanvas.getContext('2d')!;
-  swCtx.fillStyle = '#687382';
+  const swBumpCanvas = document.createElement('canvas');
+  swBumpCanvas.width = 256;
+  swBumpCanvas.height = 256;
+  const swbCtx = swBumpCanvas.getContext('2d')!;
+
+  swCtx.fillStyle = '#525b66'; // Dark mortar grout
   swCtx.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 450; i++) {
-    const shade = 92 + Math.floor(Math.random() * 28);
-    swCtx.fillStyle = `rgb(${shade},${shade + 4},${shade + 8})`;
+  swbCtx.fillStyle = '#383838';
+  swbCtx.fillRect(0, 0, 256, 256);
+
+  // Interlocking Dhaka red terracotta & concrete brick tiles
+  const rows = 8;
+  const cols = 4;
+  const tileW = 256 / cols;
+  const tileH = 256 / rows;
+  for (let r = 0; r < rows; r++) {
+    const stagger = (r % 2) * (tileW * 0.5);
+    for (let c = -1; c <= cols; c++) {
+      const tx = c * tileW + stagger;
+      const ty = r * tileH;
+      const isTerracotta = (r + c) % 3 === 0 || (r * 2 + c) % 5 === 0;
+      const isWarmGrey = (r + c) % 2 === 0;
+      swCtx.fillStyle = isTerracotta
+        ? (r % 2 === 0 ? '#a84432' : '#943a2b')
+        : isWarmGrey
+          ? '#7c8591'
+          : '#8d949e';
+      swCtx.fillRect(tx + 2, ty + 2, tileW - 4, tileH - 4);
+
+      swbCtx.fillStyle = '#c8c8c8';
+      swbCtx.fillRect(tx + 2, ty + 2, tileW - 4, tileH - 4);
+    }
+  }
+
+  // Tactile yellow pedestrian guidance strip along footpath edge
+  swCtx.fillStyle = '#d99b18';
+  swCtx.fillRect(10, 0, 18, 256);
+  swCtx.fillStyle = '#b57b0e';
+  for (let y = 4; y < 256; y += 16) {
+    swCtx.fillRect(13, y, 12, 8);
+  }
+
+  // Iron WASA storm-drain grate inset into paver tile
+  swCtx.fillStyle = '#1f2937';
+  swCtx.fillRect(172, 92, 48, 52);
+  swCtx.fillStyle = '#090d14';
+  for (let gx = 178; gx <= 212; gx += 8) {
+    swCtx.fillRect(gx, 98, 4, 40);
+  }
+  swbCtx.fillStyle = '#242424';
+  swbCtx.fillRect(172, 92, 48, 52);
+
+  // Subtle Dhaka dust & weathered footfall speckles
+  for (let i = 0; i < 320; i++) {
+    const shade = 80 + ((i * 19) % 45);
+    swCtx.fillStyle = `rgba(${shade}, ${shade - 4}, ${shade - 10}, 0.25)`;
     swCtx.fillRect(Math.random() * 256, Math.random() * 256, 3, 3);
   }
-  swCtx.strokeStyle = '#475569';
-  swCtx.lineWidth = 3;
-  for (let i = 0; i <= 256; i += 64) {
-    swCtx.beginPath();
-    swCtx.moveTo(i, 0);
-    swCtx.lineTo(i, 256);
-    swCtx.stroke();
-    swCtx.beginPath();
-    swCtx.moveTo(0, i);
-    swCtx.lineTo(256, i);
-    swCtx.stroke();
-  }
+
   const sidewalk = finalizeColorTexture(swCanvas, maxAnisotropy, 2, 28);
-  allTextures.push(sidewalk);
+  const sidewalkBump = finalizeDataTexture(swBumpCanvas, maxAnisotropy, 2, 28);
+  allTextures.push(sidewalk, sidewalkBump);
 
   // 4. Bangladeshi Rickshaw Folk Art Hoods (4 regional Dhaka folk palettes)
   const hoodPalettes = [
@@ -675,6 +795,68 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
         ctx.fillText('আয়োজনে: পুরান ঢাকা যুব সমিতি', 128, 335);
       },
     },
+    {
+      // 7. Classic Dhaka To-Let: বাসা / দোকান ভাড়া দেওয়া হবে
+      render: (ctx: CanvasRenderingContext2D) => {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, 256, 384);
+        ctx.fillStyle = '#dc2626';
+        ctx.fillRect(0, 0, 256, 74);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 34px "Hind Siliguri", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('TO-LET / ভাড়া হবে', 128, 50);
+
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'bold 24px "Hind Siliguri", sans-serif';
+        ctx.fillText('ব্যাচেলর / ফ্যামিলি বাসা', 128, 128);
+        ctx.fillStyle = '#1d4ed8';
+        ctx.font = 'bold 20px "Hind Siliguri", sans-serif';
+        ctx.fillText('২ বেড · ডাইনিং · গ্যাস আছে', 128, 174);
+        ctx.fillStyle = '#15803d';
+        ctx.font = 'bold 22px "Hind Siliguri", sans-serif';
+        ctx.fillText('আগামী মাস থেকে উঠা যাবে', 128, 224);
+
+        ctx.fillStyle = '#fef08a';
+        ctx.fillRect(14, 255, 228, 62);
+        ctx.strokeStyle = '#dc2626';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(14, 255, 228, 62);
+        ctx.fillStyle = '#991b1b';
+        ctx.font = 'bold 20px "Hind Siliguri", sans-serif';
+        ctx.fillText('যোগাযোগ: ০১৮১৯-XXXXXX', 128, 293);
+      },
+    },
+    {
+      // 8. Spoken English & IELTS Coaching Poster
+      render: (ctx: CanvasRenderingContext2D) => {
+        ctx.fillStyle = '#fef9c3';
+        ctx.fillRect(0, 0, 256, 384);
+        ctx.strokeStyle = '#1d4ed8';
+        ctx.lineWidth = 8;
+        ctx.strokeRect(6, 6, 244, 372);
+        ctx.fillStyle = '#1d4ed8';
+        ctx.fillRect(12, 16, 232, 62);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 26px "Hind Siliguri", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('IELTS ও স্পোকেন', 128, 56);
+
+        ctx.fillStyle = '#dc2626';
+        ctx.font = 'bold 30px "Hind Siliguri", sans-serif';
+        ctx.fillText('১০০% ইংরেজিতে কথা', 128, 130);
+        ctx.fillText('বলার গ্যারান্টি!', 128, 170);
+
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'bold 18px "Hind Siliguri", sans-serif';
+        ctx.fillText('৩০% ছাড়ে নতুন ব্যাচ শুরু', 128, 225);
+        ctx.fillStyle = '#047857';
+        ctx.fillText('সায়েন্স ল্যাব · ফার্মগেট মোড়', 128, 275);
+        ctx.fillStyle = '#1e293b';
+        ctx.font = '15px "Hind Siliguri", sans-serif';
+        ctx.fillText('ফ্রি সেমিনার প্রতি শুক্রবার', 128, 330);
+      },
+    },
   ];
 
   const bangladeshiPosters = posterDefs.map((def) => {
@@ -1143,10 +1325,975 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   const trafficSignDmp = finalizeColorTexture(dmpCanvas, maxAnisotropy, 1, 1);
   allTextures.push(trafficSignDmp);
 
+  // 22. DHAKA STREET WALL GRAFFITI & CHARUKALA MURALS ("ঢাকা দেয়াল গ্রাফিতি ও দেয়াল লিখন")
+  const wallGraffitis: THREE.CanvasTexture[] = [];
+  const graffitiDefs: Array<{
+    bg: string;
+    brickTint: string;
+    splashA: string;
+    splashB: string;
+    headline: string;
+    subline: string;
+    tag: string;
+    headlineColor: string;
+    subColor: string;
+    motif: 'sun_tiger' | 'rickshaw_peacock' | 'tea_cup' | 'green_leaf' | 'road_alert' | 'cricket_pride';
+  }> = [
+    {
+      bg: '#1e293b',
+      brickTint: 'rgba(148, 163, 184, 0.14)',
+      splashA: '#ef4444',
+      splashB: '#facc15',
+      headline: 'জেগে ওঠো ঢাকা',
+      subline: 'তারুণ্যের শহর • স্বাপ্নিক বাংলাদেশ',
+      tag: 'DHAKA 1205',
+      headlineColor: '#facc15',
+      subColor: '#f8fafc',
+      motif: 'sun_tiger',
+    },
+    {
+      bg: '#881337',
+      brickTint: 'rgba(251, 113, 133, 0.16)',
+      splashA: '#10b981',
+      splashB: '#f59e0b',
+      headline: 'ঢাকা শহর • প্রাণের শহর',
+      subline: 'রিকশা শিল্প ও চারুকলার ঐতিহ্য',
+      tag: 'SHAHBAGH',
+      headlineColor: '#fef08a',
+      subColor: '#a7f3d0',
+      motif: 'rickshaw_peacock',
+    },
+    {
+      bg: '#7c2d12',
+      brickTint: 'rgba(253, 186, 116, 0.15)',
+      splashA: '#06b6d4',
+      splashB: '#f97316',
+      headline: 'পুরান ঢাকা ১১০০',
+      subline: 'এক কাপ চায়ে জমে প্রাণের আড্ডা',
+      tag: 'CHAWKBAZAR',
+      headlineColor: '#fde68a',
+      subColor: '#cffafe',
+      motif: 'tea_cup',
+    },
+    {
+      bg: '#064e3b',
+      brickTint: 'rgba(110, 231, 183, 0.13)',
+      splashA: '#84cc16',
+      splashB: '#facc15',
+      headline: 'সবুজ ঢাকা • পরিচ্ছন্ন শহর',
+      subline: 'গাছ লাগান, হর্ন কম বাজান',
+      tag: 'GREEN DHAKA',
+      headlineColor: '#fef9c3',
+      subColor: '#bbf7d0',
+      motif: 'green_leaf',
+    },
+    {
+      bg: '#e2e8f0',
+      brickTint: 'rgba(100, 116, 139, 0.16)',
+      splashA: '#dc2626',
+      splashB: '#0f172a',
+      headline: 'ধীরে চলুন • জীবন মূল্যবান',
+      subline: 'জেব্রা ক্রসিং ও ফুটপাত ব্যবহার করুন',
+      tag: 'সতর্কতা',
+      headlineColor: '#b91c1c',
+      subColor: '#0f172a',
+      motif: 'road_alert',
+    },
+    {
+      bg: '#14532d',
+      brickTint: 'rgba(255, 255, 255, 0.12)',
+      splashA: '#dc2626',
+      splashB: '#38bdf8',
+      headline: 'বাংলার বাঘ • জয়ের নেশা',
+      subline: 'হার মানি না কখনো • DHAKA VIBES',
+      tag: 'TIGERS',
+      headlineColor: '#ffffff',
+      subColor: '#fca5a5',
+      motif: 'cricket_pride',
+    },
+  ];
+
+  graffitiDefs.forEach((def, idx) => {
+    const gCanvas = document.createElement('canvas');
+    gCanvas.width = 512;
+    gCanvas.height = 256;
+    const gCtx = gCanvas.getContext('2d')!;
+
+    // Base weathered wall
+    gCtx.fillStyle = def.bg;
+    gCtx.fillRect(0, 0, 512, 256);
+
+    // Subtle underlying brick courses
+    gCtx.fillStyle = def.brickTint;
+    for (let row = 0; row < 16; row++) {
+      const y = row * 16;
+      const offset = row % 2 === 0 ? 0 : 18;
+      for (let x = -18; x < 512; x += 36) {
+        gCtx.fillRect(x + offset, y + 1, 33, 13);
+      }
+    }
+
+    // Dynamic aerosol spray clouds
+    const drawSpray = (cx: number, cy: number, rx: number, ry: number, col: string) => {
+      gCtx.save();
+      gCtx.globalAlpha = 0.42;
+      gCtx.fillStyle = col;
+      gCtx.beginPath();
+      gCtx.ellipse(cx, cy, rx, ry, (idx % 2 === 0 ? 1 : -1) * 0.25, 0, Math.PI * 2);
+      gCtx.fill();
+      gCtx.globalAlpha = 0.72;
+      for (let d = 0; d < 28; d++) {
+        const ang = (d * 2.399) % (Math.PI * 2);
+        const dist = 0.4 + ((d * 17) % 100) / 100;
+        const px = cx + Math.cos(ang) * rx * dist;
+        const py = cy + Math.sin(ang) * ry * dist;
+        gCtx.beginPath();
+        gCtx.arc(px, py, 2 + (d % 4), 0, Math.PI * 2);
+        gCtx.fill();
+      }
+      gCtx.restore();
+    };
+
+    drawSpray(125, 118, 92, 68, def.splashA);
+    drawSpray(385, 136, 98, 64, def.splashB);
+
+    // Motif artwork
+    gCtx.save();
+    if (def.motif === 'sun_tiger') {
+      gCtx.fillStyle = '#dc2626';
+      gCtx.beginPath();
+      gCtx.arc(92, 132, 48, 0, Math.PI * 2);
+      gCtx.fill();
+      gCtx.strokeStyle = '#facc15';
+      gCtx.lineWidth = 4;
+      for (let r = 0; r < 9; r++) {
+        const a = -Math.PI + (r / 8) * Math.PI;
+        gCtx.beginPath();
+        gCtx.moveTo(92 + Math.cos(a) * 52, 132 + Math.sin(a) * 52);
+        gCtx.lineTo(92 + Math.cos(a) * 68, 132 + Math.sin(a) * 68);
+        gCtx.stroke();
+      }
+    } else if (def.motif === 'rickshaw_peacock') {
+      // Stylized Charukala lotus petals
+      for (let p = -2; p <= 2; p++) {
+        gCtx.fillStyle = p % 2 === 0 ? '#facc15' : '#10b981';
+        gCtx.beginPath();
+        gCtx.ellipse(92 + p * 14, 132 + Math.abs(p) * 5, 12, 34, p * 0.25, 0, Math.PI * 2);
+        gCtx.fill();
+      }
+    } else if (def.motif === 'tea_cup') {
+      // Steaming Dhaka clay tea cup stencil
+      gCtx.fillStyle = '#fde68a';
+      gCtx.fillRect(62, 118, 54, 46);
+      gCtx.strokeStyle = '#fde68a';
+      gCtx.lineWidth = 6;
+      gCtx.beginPath();
+      gCtx.arc(118, 140, 14, -Math.PI / 2, Math.PI / 2);
+      gCtx.stroke();
+      gCtx.strokeStyle = '#cffafe';
+      gCtx.lineWidth = 3;
+      [76, 90, 104].forEach((sx, si) => {
+        gCtx.beginPath();
+        gCtx.moveTo(sx, 110);
+        gCtx.quadraticCurveTo(sx + (si % 2 === 0 ? 8 : -8), 90, sx, 74);
+        gCtx.stroke();
+      });
+    } else if (def.motif === 'green_leaf') {
+      gCtx.fillStyle = '#84cc16';
+      gCtx.beginPath();
+      gCtx.ellipse(88, 132, 38, 22, -0.5, 0, Math.PI * 2);
+      gCtx.fill();
+      gCtx.strokeStyle = '#064e3b';
+      gCtx.lineWidth = 3;
+      gCtx.beginPath();
+      gCtx.moveTo(58, 152);
+      gCtx.lineTo(116, 110);
+      gCtx.stroke();
+    } else if (def.motif === 'road_alert') {
+      // Black/Red stencil triangle
+      gCtx.fillStyle = '#dc2626';
+      gCtx.beginPath();
+      gCtx.moveTo(88, 76);
+      gCtx.lineTo(128, 160);
+      gCtx.lineTo(48, 160);
+      gCtx.closePath();
+      gCtx.fill();
+      gCtx.fillStyle = '#ffffff';
+      gCtx.font = '900 42px sans-serif';
+      gCtx.textAlign = 'center';
+      gCtx.fillText('!', 88, 148);
+    } else {
+      // Red Bangladesh flag disc + stripes
+      gCtx.fillStyle = '#dc2626';
+      gCtx.beginPath();
+      gCtx.arc(88, 128, 42, 0, Math.PI * 2);
+      gCtx.fill();
+      gCtx.strokeStyle = '#facc15';
+      gCtx.lineWidth = 4;
+      gCtx.strokeRect(44, 80, 88, 96);
+    }
+    gCtx.restore();
+
+    // Bold Graffiti Headline + Spray Outline
+    gCtx.textAlign = 'center';
+    gCtx.font = 'bold 34px "Hind Siliguri", sans-serif';
+    gCtx.lineWidth = 6;
+    gCtx.strokeStyle = 'rgba(15, 23, 42, 0.88)';
+    gCtx.strokeText(def.headline, 315, 115);
+    gCtx.fillStyle = def.headlineColor;
+    gCtx.fillText(def.headline, 315, 115);
+
+    // Paint drips down from headline
+    gCtx.fillStyle = def.headlineColor;
+    [195, 250, 320, 395, 442].forEach((dx, di) => {
+      gCtx.fillRect(dx, 122, 3, 12 + (di % 3) * 11);
+    });
+
+    // Subline stencil banner
+    gCtx.font = 'bold 19px "Hind Siliguri", sans-serif';
+    gCtx.fillStyle = def.subColor;
+    gCtx.fillText(def.subline, 315, 168);
+
+    // Street Tag Badge
+    gCtx.fillStyle = '#0f172a';
+    gCtx.fillRect(382, 198, 114, 32);
+    gCtx.strokeStyle = def.splashB;
+    gCtx.lineWidth = 2;
+    gCtx.strokeRect(382, 198, 114, 32);
+    gCtx.fillStyle = '#facc15';
+    gCtx.font = 'bold 14px sans-serif';
+    gCtx.fillText(def.tag, 439, 219);
+
+    // Moss/damp bottom weathering strip along street wall base
+    const dampGrad = gCtx.createLinearGradient(0, 214, 0, 256);
+    dampGrad.addColorStop(0, 'rgba(20, 30, 22, 0)');
+    dampGrad.addColorStop(1, 'rgba(20, 30, 22, 0.55)');
+    gCtx.fillStyle = dampGrad;
+    gCtx.fillRect(0, 214, 512, 42);
+
+    const gTex = finalizeColorTexture(gCanvas, maxAnisotropy, 1, 1);
+    allTextures.push(gTex);
+    wallGraffitis.push(gTex);
+  });
+
+  // 23. DHAKA CULTURAL INTERSECTION STREET ALPANA ("চারুকলা রাস্তার আলপনা")
+  const alpanaCanvas = document.createElement('canvas');
+  alpanaCanvas.width = 512;
+  alpanaCanvas.height = 512;
+  const aCtx = alpanaCanvas.getContext('2d')!;
+  aCtx.clearRect(0, 0, 512, 512);
+  aCtx.translate(256, 256);
+
+  // Outer dashed folk ring
+  aCtx.strokeStyle = 'rgba(248, 250, 252, 0.78)';
+  aCtx.lineWidth = 8;
+  aCtx.setLineDash([18, 14]);
+  aCtx.beginPath();
+  aCtx.arc(0, 0, 228, 0, Math.PI * 2);
+  aCtx.stroke();
+  aCtx.setLineDash([]);
+
+  // Middle saffron ring + lotus petals
+  aCtx.strokeStyle = 'rgba(250, 204, 21, 0.85)';
+  aCtx.lineWidth = 6;
+  aCtx.beginPath();
+  aCtx.arc(0, 0, 185, 0, Math.PI * 2);
+  aCtx.stroke();
+
+  const petalCount = 16;
+  for (let i = 0; i < petalCount; i++) {
+    aCtx.save();
+    aCtx.rotate((i / petalCount) * Math.PI * 2);
+    aCtx.fillStyle = i % 2 === 0 ? 'rgba(248, 250, 252, 0.78)' : 'rgba(239, 68, 68, 0.78)';
+    aCtx.beginPath();
+    aCtx.ellipse(0, -140, 18, 38, 0, 0, Math.PI * 2);
+    aCtx.fill();
+
+    aCtx.fillStyle = 'rgba(250, 204, 21, 0.86)';
+    aCtx.beginPath();
+    aCtx.arc(0, -206, 6, 0, Math.PI * 2);
+    aCtx.fill();
+    aCtx.restore();
+  }
+
+  // Inner mandala star
+  for (let i = 0; i < 12; i++) {
+    aCtx.save();
+    aCtx.rotate((i / 12) * Math.PI * 2);
+    aCtx.fillStyle = i % 2 === 0 ? 'rgba(16, 185, 129, 0.8)' : 'rgba(248, 250, 252, 0.82)';
+    aCtx.beginPath();
+    aCtx.moveTo(0, -92);
+    aCtx.lineTo(14, -54);
+    aCtx.lineTo(-14, -54);
+    aCtx.closePath();
+    aCtx.fill();
+    aCtx.restore();
+  }
+  aCtx.fillStyle = 'rgba(250, 204, 21, 0.85)';
+  aCtx.beginPath();
+  aCtx.arc(0, 0, 36, 0, Math.PI * 2);
+  aCtx.fill();
+  aCtx.fillStyle = 'rgba(220, 38, 38, 0.85)';
+  aCtx.beginPath();
+  aCtx.arc(0, 0, 18, 0, Math.PI * 2);
+  aCtx.fill();
+
+  const streetAlpana = finalizeColorTexture(alpanaCanvas, maxAnisotropy, 1, 1);
+  allTextures.push(streetAlpana);
+
+  // 24. CROSS-STREET DHAKA EVENT & HERITAGE BANNERS ("ঢাকা উৎসব ও বইমেলা ব্যানার")
+  const streetBanners: THREE.CanvasTexture[] = [];
+  const bannerDefs = [
+    {
+      bg: '#b91c1c',
+      accent: '#facc15',
+      title: 'পুরান ঢাকা ঐতিহ্য ও খাদ্য উৎসব',
+      sub: 'চকবাজার • নাজিরাবাজার • লালবাগ কেল্লা এলাকা',
+    },
+    {
+      bg: '#065f46',
+      accent: '#fde047',
+      title: 'ঢাকা বইমেলা ও চারুকলা প্রদর্শনী',
+      sub: 'টিএসসি • শাহবাগ • সোহরাওয়ার্দী উদ্যান',
+    },
+    {
+      bg: '#1e3a8a',
+      accent: '#fde047',
+      title: 'মেডিকেল ও ইঞ্জিনিয়ারিং ভর্তি মেলা ২০২৬',
+      sub: 'নিউ মার্কেট • নীলক্ষেত • এলিফ্যান্ট রোড শাখা',
+    },
+    {
+      bg: '#7c2d12',
+      accent: '#fef08a',
+      title: 'সড়ক নিরাপত্তা ও মেট্রোরেল সচেতনতা সপ্তাহ',
+      sub: 'জেব্রা ক্রসিং ও ফুটওভার ব্রিজ ব্যবহার করুন • ডিএমপি',
+    },
+    {
+      bg: '#881337',
+      accent: '#facc15',
+      title: 'শারদীয় ও ঈদ মহা-বৈশাখী বস্ত্র মেলা',
+      sub: 'গাউছিয়া • চন্দ্রিমা • নিউ মার্কেট ৫০% ডিসকাউন্ট!',
+    },
+    {
+      bg: '#047857',
+      accent: '#fef08a',
+      title: 'শাবাশ বাংলাদেশ! মিরপুর স্টেডিয়াম ক্রিকেট ধামাকা',
+      sub: 'টাইগার্স বনাম বিশ্ব একাদশ • লাইভ বড় পর্দায়',
+    },
+  ];
+  bannerDefs.forEach((bDef) => {
+    const bCan = document.createElement('canvas');
+    bCan.width = 512;
+    bCan.height = 128;
+    const bCtx = bCan.getContext('2d')!;
+    bCtx.fillStyle = bDef.bg;
+    bCtx.fillRect(0, 0, 512, 128);
+    bCtx.strokeStyle = bDef.accent;
+    bCtx.lineWidth = 6;
+    bCtx.strokeRect(5, 5, 502, 118);
+    bCtx.fillStyle = bDef.accent;
+    bCtx.font = 'bold 28px "Hind Siliguri", sans-serif';
+    bCtx.textAlign = 'center';
+    bCtx.fillText(bDef.title, 256, 56);
+    bCtx.fillStyle = '#ffffff';
+    bCtx.font = 'bold 18px "Hind Siliguri", sans-serif';
+    bCtx.fillText(bDef.sub, 256, 94);
+    const bTex = finalizeColorTexture(bCan, maxAnisotropy, 1, 1);
+    allTextures.push(bTex);
+    streetBanners.push(bTex);
+  });
+
+  // 25. DHAKA NEW MARKET GATE ARCH SIGN ("ঢাকা নিউ মার্কেট ★ স্থাপিত ১৯৫৪")
+  const nmArchCan = document.createElement('canvas');
+  nmArchCan.width = 512;
+  nmArchCan.height = 128;
+  const nmCtx = nmArchCan.getContext('2d')!;
+  nmCtx.fillStyle = '#fef3c7';
+  nmCtx.fillRect(0, 0, 512, 128);
+  nmCtx.fillStyle = '#991b1b';
+  nmCtx.fillRect(8, 8, 496, 112);
+  nmCtx.strokeStyle = '#fbbf24';
+  nmCtx.lineWidth = 4;
+  nmCtx.strokeRect(14, 14, 484, 100);
+  nmCtx.fillStyle = '#fef08a';
+  nmCtx.font = 'bold 34px "Hind Siliguri", sans-serif';
+  nmCtx.textAlign = 'center';
+  nmCtx.fillText('ঢাকা নিউ মার্কেট ★ ১৯৫৪', 256, 62);
+  nmCtx.fillStyle = '#ffffff';
+  nmCtx.font = 'bold 17px "Hind Siliguri", sans-serif';
+  nmCtx.fillText('DHAKA NEW MARKET • শপিং কমপ্লেক্স • গেট নং ১', 256, 98);
+  const newMarketArchSign = finalizeColorTexture(nmArchCan, maxAnisotropy, 1, 1);
+  allTextures.push(newMarketArchSign);
+
+  // 26. NEW MARKET — GAWSIA FOOT OVERBRIDGE BANNER
+  const obCan = document.createElement('canvas');
+  obCan.width = 512;
+  obCan.height = 128;
+  const obCtx = obCan.getContext('2d')!;
+  obCtx.fillStyle = '#065f46';
+  obCtx.fillRect(0, 0, 512, 128);
+  obCtx.fillStyle = '#facc15';
+  obCtx.fillRect(0, 0, 512, 14);
+  obCtx.fillRect(0, 114, 512, 14);
+  obCtx.fillStyle = '#ffffff';
+  obCtx.font = 'bold 26px "Hind Siliguri", sans-serif';
+  obCtx.textAlign = 'center';
+  obCtx.fillText('নিউ মার্কেট ⇄ গাউছিয়া ⇄ চন্দ্রিমা', 256, 58);
+  obCtx.fillStyle = '#fde68a';
+  obCtx.font = 'bold 18px "Hind Siliguri", sans-serif';
+  obCtx.fillText('ফুটওভার ব্রিজ ব্যবহার করুন • নীলক্ষেত — এলিফ্যান্ট রোড', 256, 94);
+  const newMarketOverbridgeBanner = finalizeColorTexture(obCan, maxAnisotropy, 1, 1);
+  allTextures.push(newMarketOverbridgeBanner);
+
+  // 27. COLORFUL HANGING SAREES / PANJABIS / GARMENT DISPLAY RACK
+  const garCan = document.createElement('canvas');
+  garCan.width = 256;
+  garCan.height = 256;
+  const garCtx = garCan.getContext('2d')!;
+  garCtx.fillStyle = '#1e293b';
+  garCtx.fillRect(0, 0, 256, 256);
+  const clothPalette = ['#e11d48', '#f59e0b', '#10b981', '#0284c7', '#a855f7', '#ec4899', '#eab308', '#14b8a6'];
+  for (let i = 0; i < 8; i++) {
+    garCtx.fillStyle = clothPalette[i];
+    garCtx.fillRect(6 + i * 31, 22, 26, 200);
+    // Decorative saree zari/embroidery stripes
+    garCtx.fillStyle = '#fef08a';
+    garCtx.fillRect(6 + i * 31, 175, 26, 12);
+    garCtx.fillRect(6 + i * 31, 32, 26, 6);
+  }
+  // Top steel hanging rail
+  garCtx.fillStyle = '#cbd5e1';
+  garCtx.fillRect(0, 14, 256, 10);
+  const newMarketGarmentRack = finalizeColorTexture(garCan, maxAnisotropy, 1, 1);
+  allTextures.push(newMarketGarmentRack);
+
+  // 28. NEW MARKET FOOTPATH STRIPED TARPAULIN AWNING ("দোকানের রঙিন ত্রিপল ছাউনি")
+  const awnCan = document.createElement('canvas');
+  awnCan.width = 256;
+  awnCan.height = 128;
+  const awnCtx = awnCan.getContext('2d')!;
+  for (let i = 0; i < 8; i++) {
+    awnCtx.fillStyle = i % 2 === 0 ? '#1d4ed8' : '#f8fafc';
+    awnCtx.fillRect(i * 32, 0, 32, 128);
+  }
+  awnCtx.fillStyle = 'rgba(220, 38, 38, 0.9)';
+  awnCtx.fillRect(0, 108, 256, 20);
+  const marketStripedAwning = finalizeColorTexture(awnCan, maxAnisotropy, 2, 1);
+  allTextures.push(marketStripedAwning);
+
+  // 29. NILKHET OLD BOOK MARKET STACK TEXTURE
+  const bkCan = document.createElement('canvas');
+  bkCan.width = 256;
+  bkCan.height = 256;
+  const bkCtx = bkCan.getContext('2d')!;
+  bkCtx.fillStyle = '#78350f';
+  bkCtx.fillRect(0, 0, 256, 256);
+  const bookCols = ['#dc2626', '#2563eb', '#16a34a', '#f59e0b', '#f8fafc', '#9333ea', '#0891b2'];
+  for (let row = 0; row < 5; row++) {
+    for (let col = 0; col < 10; col++) {
+      bkCtx.fillStyle = bookCols[(row * 3 + col) % bookCols.length];
+      bkCtx.fillRect(8 + col * 24, 16 + row * 48, 20, 40);
+      bkCtx.fillStyle = 'rgba(255,255,255,0.45)';
+      bkCtx.fillRect(10 + col * 24, 24 + row * 48, 16, 6);
+    }
+  }
+  const nilkhetBooksTex = finalizeColorTexture(bkCan, maxAnisotropy, 1, 1);
+  allTextures.push(nilkhetBooksTex);
+
+  // 30. LARGE DHAKA ROADSIDE & ROOFTOP BILLBOARDS (512x256)
+  const billboardDefs = [
+    {
+      bgA: '#991b1b',
+      bgB: '#dc2626',
+      accent: '#facc15',
+      badge: 'নং ১ পছন্দ',
+      headline: 'বসুন্ধরা গোল্ডেন সিমেন্ট',
+      sub: 'মজবুত ঢাকার ভিত্তি · শতভাগ খাঁটি ক্লিংকার',
+      tag: 'সারা বাংলাদেশে ডিলার নিয়োগ চলছে',
+    },
+    {
+      bgA: '#0369a1',
+      bgB: '#0ea5e9',
+      accent: '#fef08a',
+      badge: 'গ্রামীণফোন ৫জি',
+      headline: 'চলো বহুদূর — ১০০ জিবি ৯৯৳',
+      sub: 'দেশের সবচেয়ে দ্রুতগতির নেটওয়ার্ক এখন ঢাকায়',
+      tag: 'মাইজিপি অ্যাপে আজই অ্যাক্টিভেট করুন',
+    },
+    {
+      bgA: '#14532d',
+      bgB: '#16a34a',
+      accent: '#fde047',
+      badge: '১০০% আসল স্বাদ',
+      headline: 'ইস্পাহানি মির্জাপুর ও প্রাণ জুস',
+      sub: 'প্রতি চুমুকে সিলেটের বাগানের সতেজ আমেজ',
+      tag: 'সকল খোলা মুদি দোকানে পাওয়া যাচ্ছে',
+    },
+    {
+      bgA: '#1e1b4b',
+      bgB: '#3730a3',
+      accent: '#38bdf8',
+      badge: 'ভর্তি চলছে',
+      headline: 'উদ্ভাস ও উন্মেষ কোচিং',
+      sub: 'বুয়েট · ঢাকা মেডিকেল · ঢাবি ক-ইউনিট ২০২৬',
+      tag: 'ফার্মগেট · সায়েন্স ল্যাব · মিরপুর শাখা',
+    },
+    {
+      bgA: '#0f172a',
+      bgB: '#1e293b',
+      accent: '#f59e0b',
+      badge: 'দেশীয় গর্ব',
+      headline: 'ওয়ালটন স্মার্ট টিভি ও ফ্রিজ',
+      sub: 'ঈদ ধামাকা অফার · জিতে নিন লাখ টাকার ক্যাশ ভাউচার!',
+      tag: 'ওয়ালটন প্লাজা — এলিফ্যান্ট রোড ও নিউ মার্কেট',
+    },
+    {
+      bgA: '#be185d',
+      bgB: '#db2777',
+      accent: '#fde047',
+      badge: 'বিকাশ আছে!',
+      headline: 'পেমেন্ট করলেই ২০% ক্যাশব্যাক',
+      sub: 'শপিং · খাবার · রিকশা ভাড়া সবকিছু এখন মুহূর্তে',
+      tag: 'ডায়াল *২৪৭# অথবা বিকাশ অ্যাপ',
+    },
+  ];
+  const billboards = billboardDefs.map((b) => {
+    const can = document.createElement('canvas');
+    can.width = 512;
+    can.height = 256;
+    const ctx = can.getContext('2d')!;
+    const grad = ctx.createLinearGradient(0, 0, 512, 256);
+    grad.addColorStop(0, b.bgA);
+    grad.addColorStop(1, b.bgB);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 256);
+
+    // Decorative diagonal accent stripe
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath();
+    ctx.moveTo(320, 0);
+    ctx.lineTo(512, 0);
+    ctx.lineTo(512, 256);
+    ctx.lineTo(220, 256);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = b.accent;
+    ctx.lineWidth = 8;
+    ctx.strokeRect(8, 8, 496, 240);
+
+    // Corner badge
+    ctx.fillStyle = b.accent;
+    ctx.fillRect(22, 22, 168, 38);
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 20px "Hind Siliguri", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.badge, 106, 48);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 36px "Hind Siliguri", sans-serif';
+    ctx.fillText(b.headline, 256, 118);
+
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 21px "Hind Siliguri", sans-serif';
+    ctx.fillText(b.sub, 256, 168);
+
+    ctx.fillStyle = 'rgba(15,23,42,0.72)';
+    ctx.fillRect(28, 194, 456, 36);
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 17px "Hind Siliguri", sans-serif';
+    ctx.fillText(b.tag, 256, 218);
+
+    const tex = finalizeColorTexture(can, maxAnisotropy, 1, 1);
+    allTextures.push(tex);
+    return tex;
+  });
+
+  // 31. LAMP-POST & METRO PILLAR VERTICAL FESTOONS (192x384)
+  const vBannerDefs = [
+    { bg: '#dc2626', accent: '#facc15', t1: 'ভর্তি চলছে', t2: 'সায়েন্স ল্যাব', t3: 'ফ্রি ক্লাস' },
+    { bg: '#047857', accent: '#fef08a', t1: 'সবুজ ঢাকা', t2: 'গাছ লাগান', t3: 'পরিবেশ বাঁচান' },
+    { bg: '#1d4ed8', accent: '#ffffff', t1: 'ফাইবার নেট', t2: '৫০০ টাকায়', t3: 'আনলিমিটেড' },
+    { bg: '#9a3412', accent: '#fde047', t1: 'ঈদ সেল', t2: 'নিউ মার্কেট', t3: '৫০% ছাড়' },
+  ];
+  const verticalBanners = vBannerDefs.map((vb) => {
+    const can = document.createElement('canvas');
+    can.width = 192;
+    can.height = 384;
+    const ctx = can.getContext('2d')!;
+    ctx.fillStyle = vb.bg;
+    ctx.fillRect(0, 0, 192, 384);
+    ctx.strokeStyle = vb.accent;
+    ctx.lineWidth = 8;
+    ctx.strokeRect(8, 8, 176, 368);
+    ctx.fillStyle = vb.accent;
+    ctx.font = 'bold 28px "Hind Siliguri", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(vb.t1, 96, 108);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 24px "Hind Siliguri", sans-serif';
+    ctx.fillText(vb.t2, 96, 196);
+    ctx.fillStyle = '#fde68a';
+    ctx.font = 'bold 22px "Hind Siliguri", sans-serif';
+    ctx.fillText(vb.t3, 96, 282);
+    const tex = finalizeColorTexture(can, maxAnisotropy, 1, 1);
+    allTextures.push(tex);
+    return tex;
+  });
+
+  // 32. OPEN SHOP ILLUMINATED SIGNBOARDS (512x128)
+  const openShopDefs = [
+    { bg: '#065f46', bar: '#22c55e', title: 'লাজ ফার্মা ও মেডিসিন কর্নার', sub: 'খোলা • ২৪ ঘণ্টা ওষুধ ও ফার্স্ট এইড' },
+    { bg: '#7c2d12', bar: '#f59e0b', title: 'মায়ের দোয়া মুদি ও কনফেকশনারি', sub: 'খোলা • চাল ডাল বিস্কুট কোল্ড ড্রিঙ্কস' },
+    { bg: '#0f172a', bar: '#ec4899', title: 'ডিজিটাল মোবাইল ও বিকাশ পয়েন্ট', sub: 'খোলা • রিচার্জ • বিকাশ • নগদ ক্যাশ আউট' },
+    { bg: '#881337', bar: '#facc15', title: 'হাজী হোটেল ও স্পেশাল চা-পরোটা', sub: 'খোলা • গরম পরোটা · মালাই চা · সিঙ্গারা' },
+  ];
+  const openShopSigns = openShopDefs.map((os) => {
+    const can = document.createElement('canvas');
+    can.width = 512;
+    can.height = 128;
+    const ctx = can.getContext('2d')!;
+    ctx.fillStyle = os.bg;
+    ctx.fillRect(0, 0, 512, 128);
+    ctx.fillStyle = os.bar;
+    ctx.fillRect(0, 0, 512, 16);
+    ctx.fillStyle = '#16a34a';
+    ctx.fillRect(14, 24, 92, 34);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 18px "Hind Siliguri", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('খোলা দোকান', 60, 47);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 28px "Hind Siliguri", sans-serif';
+    ctx.fillText(os.title, 305, 56);
+    ctx.fillStyle = '#fef08a';
+    ctx.font = 'bold 19px "Hind Siliguri", sans-serif';
+    ctx.fillText(os.sub, 256, 102);
+
+    const tex = finalizeColorTexture(can, maxAnisotropy, 1, 1);
+    allTextures.push(tex);
+    return tex;
+  });
+
+  // 33. DHAKA ELECTION POSTERS ("নির্বাচনী পোস্টার ও মার্কা") (256x384)
+  const drawCandidateSilhouette = (
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    coatColor: string,
+    hasGlasses: boolean,
+    hasTupi: boolean
+  ) => {
+    // Shoulders & Panjabi / Mujib Coat
+    ctx.fillStyle = coatColor;
+    ctx.beginPath();
+    ctx.moveTo(cx - 56, cy + 72);
+    ctx.quadraticCurveTo(cx - 50, cy + 16, cx, cy + 12);
+    ctx.quadraticCurveTo(cx + 50, cy + 16, cx + 56, cy + 72);
+    ctx.closePath();
+    ctx.fill();
+    // White inner collar
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath();
+    ctx.moveTo(cx - 14, cy + 12);
+    ctx.lineTo(cx, cy + 44);
+    ctx.lineTo(cx + 14, cy + 12);
+    ctx.closePath();
+    ctx.fill();
+    // Head
+    ctx.fillStyle = '#d4d4d8';
+    ctx.beginPath();
+    ctx.arc(cx, cy - 14, 24, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#18181b';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    // Hair or Tupi
+    if (hasTupi) {
+      ctx.fillStyle = '#f1f5f9';
+      ctx.beginPath();
+      ctx.arc(cx, cy - 22, 24, Math.PI, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = '#18181b';
+      ctx.beginPath();
+      ctx.arc(cx, cy - 20, 24, Math.PI, Math.PI * 2);
+      ctx.fill();
+    }
+    if (hasGlasses) {
+      ctx.strokeStyle = '#09090b';
+      ctx.lineWidth = 2.2;
+      ctx.strokeRect(cx - 16, cy - 20, 12, 8);
+      ctx.strokeRect(cx + 4, cy - 20, 12, 8);
+      ctx.beginPath();
+      ctx.moveTo(cx - 4, cy - 16);
+      ctx.lineTo(cx + 4, cy - 16);
+      ctx.stroke();
+    }
+  };
+
+  const electionPosterDefs = [
+    {
+      bg: '#f8fafc',
+      border: '#09090b',
+      headerBg: '#09090b',
+      headerFg: '#ffffff',
+      topTag: 'ওয়ার্ড নং ১৮ · সিটি নির্বাচন',
+      slogan: 'আসন্ন নির্বাচনে সৎ ও যোগ্য প্রার্থী',
+      name: 'হাজী মতিউর রহমান',
+      symbolName: 'রিকশা মার্কা',
+      cta: 'রিকশা মার্কায় আপনার মূল্যবান ভোট দিন',
+      accentBg: '#18181b',
+      accentFg: '#facc15',
+      hasGlasses: true,
+      hasTupi: true,
+      drawSymbol: (ctx: CanvasRenderingContext2D, sx: number, sy: number) => {
+        ctx.strokeStyle = '#09090b';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.arc(sx - 18, sy + 14, 13, 0, Math.PI * 2);
+        ctx.arc(sx + 20, sy + 14, 13, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#09090b';
+        ctx.beginPath();
+        ctx.moveTo(sx - 20, sy + 12);
+        ctx.lineTo(sx - 6, sy - 16);
+        ctx.lineTo(sx + 16, sy - 16);
+        ctx.lineTo(sx + 18, sy + 6);
+        ctx.closePath();
+        ctx.fill();
+      },
+    },
+    {
+      bg: '#f1f5f9',
+      border: '#111827',
+      headerBg: '#111827',
+      headerFg: '#fef08a',
+      topTag: 'নগর উন্নয়ন জোট মনোনীত',
+      slogan: 'এলাকার উন্নয়ন ও শান্তির লক্ষ্যে',
+      name: 'অ্যাডভোকেট কামাল উদ্দিন',
+      symbolName: 'ফুটবল মার্কা',
+      cta: 'ফুটবল মার্কায় ভোট দিয়ে সেবা করার সুযোগ দিন',
+      accentBg: '#0f172a',
+      accentFg: '#ffffff',
+      hasGlasses: false,
+      hasTupi: false,
+      drawSymbol: (ctx: CanvasRenderingContext2D, sx: number, sy: number) => {
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#09090b';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.arc(sx, sy + 2, 26, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#09090b';
+        ctx.beginPath();
+        ctx.arc(sx, sy + 2, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - 7);
+        ctx.lineTo(sx, sy - 24);
+        ctx.moveTo(sx - 8, sy + 6);
+        ctx.lineTo(sx - 22, sy + 14);
+        ctx.moveTo(sx + 8, sy + 6);
+        ctx.lineTo(sx + 22, sy + 14);
+        ctx.stroke();
+      },
+    },
+    {
+      bg: '#064e3b',
+      border: '#ef4444',
+      headerBg: '#dc2626',
+      headerFg: '#ffffff',
+      topTag: 'বাংলাদেশ নির্বাচন কমিশন · প্রচারণা',
+      slogan: 'আমার ভোট আমি দেবো, দেখে শুনে বুঝে দেবো',
+      name: 'সচেতন নাগরিক সমাজ',
+      symbolName: 'ব্যালট বক্স',
+      cta: 'সকাল ৮টা – বিকাল ৪টা · ভোট কেন্দ্রে আসুন',
+      accentBg: '#facc15',
+      accentFg: '#0f172a',
+      hasGlasses: true,
+      hasTupi: false,
+      drawSymbol: (ctx: CanvasRenderingContext2D, sx: number, sy: number) => {
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(sx - 24, sy - 8, 48, 34);
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(sx - 24, sy - 8, 48, 34);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(sx - 12, sy - 4, 24, 5);
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(sx - 8, sy - 26, 16, 22);
+      },
+    },
+    {
+      bg: '#fffbeb',
+      border: '#09090b',
+      headerBg: '#b91c1c',
+      headerFg: '#fef08a',
+      topTag: 'তারুণ্যের প্রথম ভোট · ঢাকা-৭',
+      slogan: 'দুর্নীতিমুক্ত স্মার্ট ও পরিচ্ছন্ন নগর গড়তে',
+      name: 'ইঞ্জি. তানভীর আহমেদ',
+      symbolName: 'ছাতা মার্কা',
+      cta: 'ছাতা মার্কায় সিল মেরে জয়যুক্ত করুন',
+      accentBg: '#18181b',
+      accentFg: '#fef08a',
+      hasGlasses: true,
+      hasTupi: false,
+      drawSymbol: (ctx: CanvasRenderingContext2D, sx: number, sy: number) => {
+        ctx.fillStyle = '#09090b';
+        ctx.beginPath();
+        ctx.arc(sx, sy + 2, 28, Math.PI, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#09090b';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - 26);
+        ctx.lineTo(sx, sy + 24);
+        ctx.arc(sx - 6, sy + 24, 6, 0, Math.PI);
+        ctx.stroke();
+      },
+    },
+  ];
+
+  const electionPosters = electionPosterDefs.map((ep, idx) => {
+    const can = document.createElement('canvas');
+    can.width = 256;
+    can.height = 384;
+    const ctx = can.getContext('2d')!;
+    ctx.fillStyle = ep.bg;
+    ctx.fillRect(0, 0, 256, 384);
+
+    // Classic thick halftone poster border
+    ctx.strokeStyle = ep.border;
+    ctx.lineWidth = 8;
+    ctx.strokeRect(6, 6, 244, 372);
+
+    // Header band
+    ctx.fillStyle = ep.headerBg;
+    ctx.fillRect(14, 14, 228, 36);
+    ctx.fillStyle = ep.headerFg;
+    ctx.font = 'bold 16px "Hind Siliguri", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(ep.topTag, 128, 38);
+
+    // Slogan
+    ctx.fillStyle = idx === 2 ? '#fef08a' : '#1e293b';
+    ctx.font = 'bold 14px "Hind Siliguri", sans-serif';
+    ctx.fillText(ep.slogan, 128, 69);
+
+    // Left: Candidate portrait frame, Right: Election Symbol box
+    ctx.fillStyle = idx === 2 ? '#ecfdf5' : '#e2e8f0';
+    ctx.fillRect(18, 82, 114, 134);
+    ctx.strokeStyle = '#09090b';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(18, 82, 114, 134);
+    drawCandidateSilhouette(
+      ctx,
+      75,
+      144,
+      idx % 2 === 0 ? '#18181b' : '#334155',
+      ep.hasGlasses,
+      ep.hasTupi
+    );
+
+    // Right: Election Symbol Frame
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(138, 82, 100, 134);
+    ctx.strokeStyle = '#09090b';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(138, 82, 100, 134);
+    ep.drawSymbol(ctx, 188, 132);
+    ctx.fillStyle = '#09090b';
+    ctx.font = 'bold 16px "Hind Siliguri", sans-serif';
+    ctx.fillText(ep.symbolName, 188, 202);
+
+    // Candidate Name
+    ctx.fillStyle = idx === 2 ? '#ffffff' : '#09090b';
+    ctx.font = 'bold 24px "Hind Siliguri", sans-serif';
+    ctx.fillText(ep.name, 128, 252);
+
+    // Big Vote CTA Bar
+    ctx.fillStyle = ep.accentBg;
+    ctx.fillRect(16, 272, 224, 54);
+    ctx.fillStyle = ep.accentFg;
+    ctx.font = 'bold 15px "Hind Siliguri", sans-serif';
+    ctx.fillText(ep.cta, 128, 305);
+
+    ctx.fillStyle = idx === 2 ? '#fde68a' : '#475569';
+    ctx.font = 'bold 13px "Hind Siliguri", sans-serif';
+    ctx.fillText('প্রচারে: এলাকাবাসী ও তরুণ সমাজ', 128, 355);
+
+    const tex = finalizeColorTexture(can, maxAnisotropy, 1, 1);
+    allTextures.push(tex);
+    return tex;
+  });
+
+  // 34. OVERHEAD HANGING ELECTION POSTER STRING ("রশিতে ঝোলানো নির্বাচনী পোস্টার") (512x160 transparent)
+  const eRopeCanvas = document.createElement('canvas');
+  eRopeCanvas.width = 512;
+  eRopeCanvas.height = 160;
+  const eRopeCtx = eRopeCanvas.getContext('2d')!;
+  eRopeCtx.clearRect(0, 0, 512, 160);
+  // Black hanging twine across top
+  eRopeCtx.strokeStyle = '#0f172a';
+  eRopeCtx.lineWidth = 4;
+  eRopeCtx.beginPath();
+  eRopeCtx.moveTo(0, 12);
+  eRopeCtx.quadraticCurveTo(256, 24, 512, 12);
+  eRopeCtx.stroke();
+
+  const posterCount = 7;
+  for (let i = 0; i < posterCount; i++) {
+    const px = 14 + i * 70;
+    const py = 14 + Math.round(Math.sin((i / (posterCount - 1)) * Math.PI) * 7);
+    if (i % 3 === 1) {
+      // Triangular red/green election pennant
+      eRopeCtx.fillStyle = i % 2 === 0 ? '#dc2626' : '#16a34a';
+      eRopeCtx.beginPath();
+      eRopeCtx.moveTo(px + 6, py);
+      eRopeCtx.lineTo(px + 54, py);
+      eRopeCtx.lineTo(px + 30, py + 76);
+      eRopeCtx.closePath();
+      eRopeCtx.fill();
+      eRopeCtx.fillStyle = '#fef08a';
+      eRopeCtx.font = 'bold 14px "Hind Siliguri", sans-serif';
+      eRopeCtx.textAlign = 'center';
+      eRopeCtx.fillText('ভোট', px + 30, py + 32);
+    } else {
+      // Hanging B&W Laminated Election Poster Card
+      eRopeCtx.fillStyle = '#f8fafc';
+      eRopeCtx.fillRect(px, py, 58, 96);
+      eRopeCtx.strokeStyle = '#09090b';
+      eRopeCtx.lineWidth = 3;
+      eRopeCtx.strokeRect(px, py, 58, 96);
+      eRopeCtx.fillStyle = i % 2 === 0 ? '#09090b' : '#b91c1c';
+      eRopeCtx.fillRect(px + 4, py + 4, 50, 16);
+      // Mini candidate face + symbol circles
+      eRopeCtx.fillStyle = '#cbd5e1';
+      eRopeCtx.beginPath();
+      eRopeCtx.arc(px + 29, py + 40, 12, 0, Math.PI * 2);
+      eRopeCtx.fill();
+      eRopeCtx.fillStyle = '#18181b';
+      eRopeCtx.fillRect(px + 11, py + 54, 36, 22);
+      eRopeCtx.fillStyle = '#facc15';
+      eRopeCtx.font = 'bold 11px "Hind Siliguri", sans-serif';
+      eRopeCtx.textAlign = 'center';
+      eRopeCtx.fillText('ভোট দিন', px + 29, py + 90);
+    }
+  }
+  const electionPosterRope = finalizeColorTexture(eRopeCanvas, maxAnisotropy, 1, 1);
+  allTextures.push(electionPosterRope);
+
   return {
     asphalt,
+    asphaltBump,
     curb,
     sidewalk,
+    sidewalkBump,
     rickshawArt,
     rickshawHoodVariants,
     rickshawRearArt,
@@ -1172,6 +2319,19 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
     lungis,
     zebraCrossing,
     trafficSignDmp,
+    wallGraffitis,
+    streetAlpana,
+    streetBanners,
+    newMarketArchSign,
+    newMarketOverbridgeBanner,
+    newMarketGarmentRack,
+    marketStripedAwning,
+    nilkhetBooksTex,
+    billboards,
+    verticalBanners,
+    openShopSigns,
+    electionPosters,
+    electionPosterRope,
     disposeAll: () => {
       allTextures.forEach((t) => t.dispose());
     },

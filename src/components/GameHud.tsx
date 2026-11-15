@@ -6,13 +6,13 @@ import {
   ChevronUp,
   Cloud,
   Gamepad2,
+  Newspaper,
   Pause,
-  Radio,
   Sun,
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import { soundEngine } from '../audio/soundEngine';
+import { DhakaRadioWidget } from './DhakaRadioWidget';
 import {
   CameraMode,
   DRIVER_PROFILES,
@@ -54,14 +54,6 @@ export const GameHud: React.FC<GameHudProps> = ({
 }) => {
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [touchPadEnabled, setTouchPadEnabled] = useState(false);
-  const [radioStation, setRadioStation] = useState<'FM_98_4' | 'FOLK' | 'OFF'>(
-    soundEngine.getRadioStation()
-  );
-
-  const handleToggleRadio = () => {
-    const next = soundEngine.toggleRadio();
-    setRadioStation(next);
-  };
 
   useEffect(() => {
     const isCoarse =
@@ -187,60 +179,104 @@ export const GameHud: React.FC<GameHudProps> = ({
           )}
         </div>
 
-        {/* Center: Major Traffic Signal Alert Widget */}
-        {hud.trafficSignal && hud.trafficSignal.state !== 'NONE' && (
-          <div className="pointer-events-auto flex flex-col items-center rounded-2xl border border-white/20 bg-zinc-950/95 px-3.5 py-2 shadow-2xl">
-            <div className="flex items-center gap-2.5">
-              {/* 3-light compact signal housing */}
-              <div className="flex items-center gap-1.5 rounded-full bg-zinc-900 border border-white/15 px-2 py-1 shadow-inner">
-                <span
-                  className={`h-3 w-3 rounded-full transition-all duration-200 ${
-                    hud.trafficSignal.state === 'RED'
-                      ? 'bg-rose-500 shadow-md shadow-rose-500 ring-2 ring-rose-400 animate-pulse'
-                      : 'bg-rose-950/60'
-                  }`}
-                />
-                <span
-                  className={`h-3 w-3 rounded-full transition-all duration-200 ${
-                    hud.trafficSignal.state === 'YELLOW'
-                      ? 'bg-amber-400 shadow-md shadow-amber-400 ring-2 ring-amber-300 animate-pulse'
-                      : 'bg-amber-950/60'
-                  }`}
-                />
-                <span
-                  className={`h-3 w-3 rounded-full transition-all duration-200 ${
-                    hud.trafficSignal.state === 'GREEN'
-                      ? 'bg-emerald-500 shadow-md shadow-emerald-500 ring-2 ring-emerald-300'
-                      : 'bg-emerald-950/60'
-                  }`}
-                />
-              </div>
-
-              <div className="text-left">
-                <div className="text-[10px] font-bold tracking-wide text-zinc-400">
-                  🚦 {hud.trafficSignal.crossingNameBn} ({hud.trafficSignal.distanceToStopLine} মি.)
+        {/* Center: Traffic Signal Alert + Dhaka Breaking News Broadcast */}
+        <div className="pointer-events-none flex flex-col items-center gap-2 max-w-[min(460px,92vw)]">
+          {hud.trafficSignal && hud.trafficSignal.state !== 'NONE' && (
+            <div className="pointer-events-auto flex flex-col items-center rounded-2xl border border-white/20 bg-zinc-950/95 px-3.5 py-2 shadow-2xl">
+              <div className="flex items-center gap-2.5">
+                {/* 3-light compact signal housing */}
+                <div className="flex items-center gap-1.5 rounded-full bg-zinc-900 border border-white/15 px-2 py-1 shadow-inner">
+                  <span
+                    className={`h-3 w-3 rounded-full transition-colors duration-200 ${
+                      hud.trafficSignal.state === 'RED'
+                        ? 'bg-rose-500 shadow-md shadow-rose-500 ring-2 ring-rose-400'
+                        : 'bg-rose-950/60'
+                    }`}
+                  />
+                  <span
+                    className={`h-3 w-3 rounded-full transition-colors duration-200 ${
+                      hud.trafficSignal.state === 'YELLOW'
+                        ? 'bg-amber-400 shadow-md shadow-amber-400 ring-2 ring-amber-300'
+                        : 'bg-amber-950/60'
+                    }`}
+                  />
+                  <span
+                    className={`h-3 w-3 rounded-full transition-colors duration-200 ${
+                      hud.trafficSignal.state === 'GREEN'
+                        ? 'bg-emerald-500 shadow-md shadow-emerald-500 ring-2 ring-emerald-300'
+                        : 'bg-emerald-950/60'
+                    }`}
+                  />
                 </div>
-                <div className="flex items-center gap-1.5 text-xs font-black">
-                  {hud.trafficSignal.state === 'RED' && (
-                    <span className="text-rose-400">
-                      🔴 লাল বাতি: স্টপে থামুন! ({hud.trafficSignal.secondsRemaining}s)
-                    </span>
-                  )}
-                  {hud.trafficSignal.state === 'YELLOW' && (
-                    <span className="text-amber-300">
-                      🟡 হলুদ সংকেত: গতি কমান ({hud.trafficSignal.secondsRemaining}s)
-                    </span>
-                  )}
-                  {hud.trafficSignal.state === 'GREEN' && (
-                    <span className="text-emerald-400">
-                      🟢 সবুজ বাতি: চালান! ({hud.trafficSignal.secondsRemaining}s)
-                    </span>
-                  )}
+
+                <div className="text-left">
+                  <div className="text-[10px] font-bold tracking-wide text-zinc-400">
+                    🚦 {hud.trafficSignal.crossingNameBn} ({hud.trafficSignal.distanceToStopLine} মি.)
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs font-black">
+                    {hud.trafficSignal.state === 'RED' && (
+                      <span className="text-rose-400">
+                        🔴 লাল বাতি: স্টপে থামুন! ({hud.trafficSignal.secondsRemaining}s)
+                      </span>
+                    )}
+                    {hud.trafficSignal.state === 'YELLOW' && (
+                      <span className="text-amber-300">
+                        🟡 হলুদ সংকেত: গতি কমান ({hud.trafficSignal.secondsRemaining}s)
+                      </span>
+                    )}
+                    {hud.trafficSignal.state === 'GREEN' && (
+                      <span className="text-emerald-400">
+                        🟢 সবুজ বাতি: চালান! ({hud.trafficSignal.secondsRemaining}s)
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {hud.breakingNews && (
+            <div
+              key={hud.breakingNews.id}
+              className="pointer-events-auto w-full overflow-hidden rounded-xl border border-white/15 bg-zinc-950/95 shadow-2xl"
+              role="status"
+              aria-live="polite"
+            >
+              <div
+                className={`flex items-center justify-between gap-2 px-3 py-1 text-[10px] font-black tracking-wide text-white ${
+                  hud.breakingNews.category === 'ACCIDENT'
+                    ? 'bg-rose-700'
+                    : hud.breakingNews.category === 'MOB_CHASE'
+                      ? 'bg-amber-700'
+                      : 'bg-red-700'
+                }`}
+              >
+                <span className="flex items-center gap-1.5 uppercase">
+                  <Newspaper className="h-3 w-3 shrink-0" />
+                  <span>
+                    ঢাকা লাইভ ২৪ ·{' '}
+                    {hud.breakingNews.category === 'ACCIDENT'
+                      ? 'সড়ক দুর্ঘটনা ব্রেকিং'
+                      : hud.breakingNews.category === 'MOB_CHASE'
+                        ? 'লাইভ ধাওয়া সংবাদ'
+                        : 'জরুরি ব্রেকিং'}
+                  </span>
+                </span>
+                <span className="rounded bg-black/35 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-100">
+                  {hud.breakingNews.locationBn}
+                </span>
+              </div>
+              <div className="px-3 py-2 text-left">
+                <div className="text-xs font-extrabold leading-snug text-white sm:text-sm">
+                  {hud.breakingNews.headlineBn}
+                </div>
+                <div className="mt-0.5 truncate text-[11px] font-medium text-amber-300/95">
+                  {hud.breakingNews.tickerBn}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Right: Wanted Stars, Speed, Traffic & Pause */}
         <div className="pointer-events-auto flex items-start gap-2">
@@ -344,12 +380,14 @@ export const GameHud: React.FC<GameHudProps> = ({
         </div>
       )}
 
-      {/* Unified Bottom Dock */}
-      <div className="pointer-events-auto mx-auto flex flex-col items-center max-w-[min(940px,95vw)]">
+      {/* Unified Bottom Dock + Dhaka FM Radio Tuner */}
+      <div className="pointer-events-none mx-auto flex flex-col items-center gap-1.5 max-w-[min(940px,95vw)]">
+        <DhakaRadioWidget />
+
         <button
           type="button"
           onClick={() => setDockCollapsed((prev) => !prev)}
-          className="mb-1 flex items-center gap-1 rounded-t-lg border border-b-0 border-white/14 bg-zinc-950/90 px-3 py-1 text-[11px] font-medium text-zinc-300 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
+          className="pointer-events-auto flex items-center gap-1 rounded-t-lg border border-b-0 border-white/14 bg-zinc-950/90 px-3 py-1 text-[11px] font-medium text-zinc-300 hover:text-white transition-colors cursor-pointer whitespace-nowrap"
         >
           {dockCollapsed ? (
             <>
@@ -365,7 +403,7 @@ export const GameHud: React.FC<GameHudProps> = ({
         </button>
 
         {!dockCollapsed && (
-          <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-white/14 bg-zinc-950/92 px-3 py-2 shadow-xl">
+          <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-xl border border-white/14 bg-zinc-950/92 px-3 py-2 shadow-xl">
             {/* Bell Button */}
             <button
               type="button"
@@ -413,25 +451,6 @@ export const GameHud: React.FC<GameHudProps> = ({
                 </button>
               ))}
             </div>
-
-            {/* Dhaka Traffic FM Radio Tuner */}
-            <button
-              type="button"
-              onClick={handleToggleRadio}
-              title="ঢাকা ট্রাফিক এফএম ৯৮.৪ রেডিও টিউন করুন"
-              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-                radioStation !== 'OFF'
-                  ? 'border-emerald-500/50 bg-emerald-950/70 text-emerald-300 hover:bg-emerald-900/60'
-                  : 'border-white/10 bg-zinc-900 text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              <Radio
-                className={`h-3.5 w-3.5 ${
-                  radioStation !== 'OFF' ? 'text-emerald-400 animate-pulse' : 'text-zinc-500'
-                }`}
-              />
-              <span>{soundEngine.getRadioStationLabel()}</span>
-            </button>
 
             {/* Weather Presets (Sunny / Cloudy) */}
             <div className="hidden items-center gap-1 rounded-lg bg-zinc-900 p-0.5 sm:flex">
@@ -485,7 +504,7 @@ export const GameHud: React.FC<GameHudProps> = ({
             </button>
 
             <span className="hidden text-[11px] text-zinc-400 lg:inline whitespace-nowrap pl-1">
-              W/S ড্রাইভ · A/D মোড় · SPACE ব্রেক · B বেল
+              W/S ড্রাইভ · A/D মোড় · SPACE ব্রেক · B বেল · R রেডিও
             </span>
           </div>
         )}
