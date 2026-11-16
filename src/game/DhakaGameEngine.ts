@@ -1631,7 +1631,7 @@ export class DhakaGameEngine {
               : Math.min(tr.laneOffset - 2.5, -5.2);
           tr.targetLaneOffset = THREE.MathUtils.clamp(pushOffset, -5.45, 5.45);
           tr.avoidTimer = 6.0;
-          if (clearedVehCount < 2) {
+          if (tr.vehicleType !== 'rickshaw' && clearedVehCount < 2) {
             this.spawnScoldBubble(
               tr.mesh,
               true,
@@ -2157,9 +2157,9 @@ export class DhakaGameEngine {
 
     this.rickshaw.invincibleAura.visible = isInvincible;
     if (isInvincible) {
-      this.rickshaw.invincibleAura.rotation.y = elapsed * 1.6;
+      this.rickshaw.invincibleAura.rotation.z = elapsed * 2.2;
       const auraMat = this.rickshaw.invincibleAura.material as THREE.MeshBasicMaterial;
-      auraMat.opacity = 0.2 + Math.sin(elapsed * 8.0) * 0.08;
+      auraMat.opacity = 0.68 + Math.sin(elapsed * 8.0) * 0.22;
     }
 
     // Upgraded 2D Driving & Grip Physics (torque taper, aerodynamic drag, tire slip, weight transfer & suspension bounce)
@@ -2828,6 +2828,15 @@ export class DhakaGameEngine {
     yOffset: number,
     forcedIndex?: number
   ): void {
+    // Never show floating speech bubbles over player rickshaw or any traffic rickshaw
+    if (targetObj === this.rickshaw.root || targetObj === this.rickshaw.chassisTilt) return;
+    if (isVehicle) {
+      for (let i = 0; i < this.traffic.length; i++) {
+        if (this.traffic[i].mesh === targetObj && this.traffic[i].vehicleType === 'rickshaw') {
+          return;
+        }
+      }
+    }
     const texList = isVehicle ? this.textures.vehicleScoldBubbles : this.textures.npcScoldBubbles;
     if (!texList || texList.length === 0 || this.speechPool.length === 0) return;
 
@@ -3002,7 +3011,7 @@ export class DhakaGameEngine {
       if (alongPos > maxAlong) maxAlong = alongPos;
       if (alongPos < minAlong) minAlong = alongPos;
 
-      if (i === 0 || i === 2) {
+      if ((i === 0 || i === 2) && tr.vehicleType !== 'rickshaw') {
         this.spawnScoldBubble(
           tr.mesh,
           true,
@@ -3639,7 +3648,9 @@ export class DhakaGameEngine {
         if (tr.isGridlocked) {
           this.gridlockHitCount++;
         }
-        this.spawnScoldBubble(tr.mesh, true, tr.isBus || tr.isTruck ? 3.0 : 1.95);
+        if (tr.vehicleType !== 'rickshaw') {
+          this.spawnScoldBubble(tr.mesh, true, tr.isBus || tr.isTruck ? 3.0 : 1.95);
+        }
         const distInv = 1 / Math.max(Math.sqrt(distSq), 0.35);
         const nx = dx * distInv;
         const nz = dz * distInv;

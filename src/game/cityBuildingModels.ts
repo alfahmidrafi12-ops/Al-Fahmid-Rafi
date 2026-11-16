@@ -16,6 +16,45 @@ let cachedBuetSign: THREE.CanvasTexture | null = null;
 let cachedGlassBankSign: THREE.CanvasTexture | null = null;
 let cachedTinMarketSign: THREE.CanvasTexture | null = null;
 let cachedBusCounterSign: THREE.CanvasTexture | null = null;
+let cachedBoutiqueHotelSigns: THREE.CanvasTexture[] | null = null;
+let cachedBladeSignPlaza: THREE.CanvasTexture | null = null;
+
+function addBuildingSideWindows(
+  group: THREE.Group,
+  width: number,
+  depth: number,
+  yLevels: number[],
+  zSlots: number[],
+  winW: number,
+  winH: number,
+  frameMat: THREE.Material,
+  glassMat: THREE.Material,
+  acMat?: THREE.Material
+): void {
+  const halfX = width / 2;
+  for (let yi = 0; yi < yLevels.length; yi++) {
+    const wy = yLevels[yi];
+    for (let zi = 0; zi < zSlots.length; zi++) {
+      const wz = zSlots[zi];
+      for (const side of [-1, 1]) {
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(0.1, winH + 0.16, winW + 0.16), frameMat);
+        frame.position.set(side * (halfX + 0.04), wy, wz);
+        group.add(frame);
+
+        const glass = new THREE.Mesh(new THREE.PlaneGeometry(winW, winH), glassMat);
+        glass.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+        glass.position.set(side * (halfX + 0.1), wy, wz);
+        group.add(glass);
+
+        if (acMat && (yi + zi) % 2 === 0) {
+          const ac = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.42, 0.62), acMat);
+          ac.position.set(side * (halfX + 0.18), wy - winH * 0.42, wz + 0.65);
+          group.add(ac);
+        }
+      }
+    }
+  }
+}
 
 function makeSignTex(
   bg: string,
@@ -365,6 +404,37 @@ export function createResidentialApartmentModel(
   waterTank.position.set(-width * 0.24, height + 1.5, -depth * 0.12);
   building.add(waterTank);
 
+  // Side-wall recessed windows (±X) + AC units + rooftop pergola & satellite dish
+  const aptYLevels: number[] = [];
+  for (let f = 1; f < floors; f++) {
+    aptYLevels.push(f * floorH + 1.55);
+  }
+  addBuildingSideWindows(
+    building,
+    width,
+    depth,
+    aptYLevels,
+    [-depth * 0.24, depth * 0.24],
+    1.85,
+    1.45,
+    trimMat,
+    glassMat,
+    acMat
+  );
+
+  // Rooftop DishTV / satellite dish + pergola frame
+  const dish = new THREE.Mesh(
+    new THREE.SphereGeometry(0.58, 10, 6, 0, Math.PI),
+    new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.4, metalness: 0.3 })
+  );
+  dish.rotation.x = -Math.PI / 3;
+  dish.position.set(width * 0.28, height + 2.45, -depth * 0.18);
+  building.add(dish);
+
+  const pergolaBeam = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.14, 2.8), grillMat);
+  pergolaBeam.position.set(-0.6, height + 1.85, depth * 0.18);
+  building.add(pergolaBeam);
+
   return building;
 }
 
@@ -464,6 +534,11 @@ export function createOldDhakaHeritageShophouseModel(
   heritageKeeper.position.set(-1.3, 0, depth / 2 + 0.56);
   building.add(heritageKeeper);
 
+  // Side-wall shuttered windows (±X) with heritage green shutters & limestone pediments
+  const greenShutterMat = new THREE.MeshStandardMaterial({ color: 0x065f46, roughness: 0.65 });
+  const sideYs = floors >= 4 ? [5.1, 8.5, 11.8] : [5.1, 8.5];
+  addBuildingSideWindows(building, width, depth, sideYs, [-2.1, 2.1], 1.45, 1.65, limestoneMat, greenShutterMat);
+
   return building;
 }
 
@@ -512,8 +587,8 @@ export function createMixedUseMidriseModel(
   });
 
   const main = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), [
-    sideMat,
-    sideMat,
+    facadeMat,
+    facadeMat,
     sideMat,
     sideMat,
     facadeMat,
@@ -540,6 +615,24 @@ export function createMixedUseMidriseModel(
   );
   midSign.position.set(0, 4.4, depth / 2 + 0.09);
   building.add(midSign);
+
+  // Horizontal slab trim bands wrapping all 4 facades
+  for (let ly = 6.8; ly < height - 1.2; ly += 3.2) {
+    const slabRing = new THREE.Mesh(new THREE.BoxGeometry(width + 0.24, 0.22, depth + 0.24), bandMat);
+    slabRing.position.set(0, ly, 0);
+    building.add(slabRing);
+  }
+
+  // Projecting illuminated corner vertical blade sign
+  if (!cachedBladeSignPlaza) {
+    cachedBladeSignPlaza = makeSignTex('#1e3a8a', '#38bdf8', 'একাডেমিক টাওয়ার', 'ব্যাংক · কোচিং · অফিস', 'COMMERCIAL PLAZA', false);
+  }
+  const bladeSign = new THREE.Mesh(
+    new THREE.BoxGeometry(0.18, 5.2, 1.35),
+    new THREE.MeshBasicMaterial({ map: cachedBladeSignPlaza })
+  );
+  bladeSign.position.set(width / 2 + 0.72, 8.8, depth / 2 - 0.5);
+  building.add(bladeSign);
 
   // Colored structural edge frames
   const topTrim = new THREE.Mesh(new THREE.BoxGeometry(width + 0.4, 0.8, depth + 0.4), bandMat);
@@ -747,6 +840,21 @@ export function createDhakaSchoolCollegeModel(
   signMesh.position.set(0, height - 1.2, depth / 2 + 1.92);
   building.add(signMesh);
 
+  // Side classroom windows (±X) & rooftop school clock pediment + flagpole
+  addBuildingSideWindows(building, width, depth, [2.0, 5.4, 8.8], [-2.2, 2.2], 2.1, 1.5, brickTrimMat, classWinMat);
+
+  const pediment = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.0, 1.4), creamMat);
+  pediment.position.set(0, height + 1.25, depth / 2 + 0.5);
+  building.add(pediment);
+
+  const clockFace = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.65, 0.65, 0.14, 12),
+    new THREE.MeshBasicMaterial({ color: 0xfef9c3 })
+  );
+  clockFace.rotation.x = Math.PI / 2;
+  clockFace.position.set(0, height + 1.3, depth / 2 + 1.24);
+  building.add(clockFace);
+
   return building;
 }
 
@@ -799,14 +907,19 @@ export function createShoppingMarketPlazaModel(
   shopBay.position.set(0, 1.55, depth / 2 + 0.08);
   building.add(shopBay);
 
-  const glassAtrium = new THREE.Mesh(new THREE.PlaneGeometry(13.2, height - 6.0), glassMat);
-  glassAtrium.position.set(0, 3.5 + (height - 6.0) / 2, depth / 2 + 0.06);
+  const glassAtrium = new THREE.Mesh(new THREE.BoxGeometry(13.2, height - 6.0, depth + 0.14), glassMat);
+  glassAtrium.position.set(0, 3.5 + (height - 6.0) / 2, 0);
   building.add(glassAtrium);
+
+  // Side curtain-glass & wraparound golden louver fins on all 4 facades
+  const sideGlass = new THREE.Mesh(new THREE.BoxGeometry(width + 0.14, height - 6.0, 7.6), glassMat);
+  sideGlass.position.set(0, 3.5 + (height - 6.0) / 2, 0);
+  building.add(sideGlass);
 
   [4.0, 7.2, 10.4, 13.4].forEach((ly) => {
     if (ly >= height) return;
-    const louver = new THREE.Mesh(new THREE.BoxGeometry(width + 0.4, 0.25, 0.42), trimMat);
-    louver.position.set(0, ly, depth / 2 + 0.2);
+    const louver = new THREE.Mesh(new THREE.BoxGeometry(width + 0.44, 0.25, depth + 0.44), trimMat);
+    louver.position.set(0, ly, 0);
     building.add(louver);
   });
 
@@ -818,8 +931,14 @@ export function createShoppingMarketPlazaModel(
     new THREE.PlaneGeometry(9.4, 2.5),
     new THREE.MeshBasicMaterial({ map: cachedMarketSign })
   );
-  signMesh.position.set(0, height - 1.5, depth / 2 + 0.12);
+  signMesh.position.set(0, height - 1.5, depth / 2 + 0.14);
   building.add(signMesh);
+
+  // Rooftop glass atrium skylight pyramid + HVAC chiller units
+  const skylight = new THREE.Mesh(new THREE.ConeGeometry(3.8, 2.4, 4), glassMat);
+  skylight.rotation.y = Math.PI / 4;
+  skylight.position.set(0, height + 1.2, 0);
+  building.add(skylight);
 
   return building;
 }
@@ -908,6 +1027,30 @@ export function createStreetRestaurantHotelModel(textures: ProceduralTexturePack
   hotelKeeper.position.set(1.9, 0, depth / 2 + 0.68);
   building.add(hotelKeeper);
 
+  // Side windows (±X), roof parapet cornice, blue water tank & warm hanging awning lanterns
+  const darkWinMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3 });
+  addBuildingSideWindows(building, width, depth, [5.8, 8.8], [-2.0, 2.0], 1.45, 1.35, trimMat, darkWinMat);
+
+  const parapet = new THREE.Mesh(new THREE.BoxGeometry(width + 0.35, 0.5, depth + 0.35), trimMat);
+  parapet.position.set(0, height + 0.25, 0);
+  building.add(parapet);
+
+  const roofTank = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.75, 0.75, 1.45, 10),
+    new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.55 })
+  );
+  roofTank.position.set(-2.8, height + 1.15, -1.5);
+  building.add(roofTank);
+
+  for (let lx = -3.8; lx <= 3.8; lx += 1.9) {
+    const lantern = new THREE.Mesh(
+      new THREE.SphereGeometry(0.11, 6, 6),
+      new THREE.MeshBasicMaterial({ color: 0xfef08a })
+    );
+    lantern.position.set(lx, 2.85, depth / 2 + 2.05);
+    building.add(lantern);
+  }
+
   return building;
 }
 
@@ -967,6 +1110,31 @@ export function createCityClinicHospitalModel(textures: ProceduralTexturePack): 
   const portico = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.35, 2.6), redMat);
   portico.position.set(0, 3.3, depth / 2 + 1.3);
   building.add(portico);
+
+  [-2.9, 2.9].forEach((px) => {
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 3.3, 8), whiteMat);
+    col.position.set(px, 1.65, depth / 2 + 2.35);
+    building.add(col);
+  });
+
+  // Side windows (±X) + AC units, 3D Medical Red Cross Emblem on blue tower crown & rooftop helipad pad
+  const acWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.45 });
+  addBuildingSideWindows(building, width, depth, [4.2, 7.2, 10.2, 13.0], [-2.5, 2.5], 1.85, 1.45, blueMat, glassMat, acWhiteMat);
+
+  const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.55, 2.1, 0.25), redMat);
+  crossV.position.set(-5.2, height - 1.6, depth / 2 + 0.28);
+  building.add(crossV);
+
+  const crossH = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.55, 0.25), redMat);
+  crossH.position.set(-5.2, height - 1.6, depth / 2 + 0.28);
+  building.add(crossH);
+
+  const heliPad = new THREE.Mesh(
+    new THREE.BoxGeometry(7.2, 0.32, 6.2),
+    new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85 })
+  );
+  heliPad.position.set(1.5, height + 0.16, 0);
+  building.add(heliPad);
 
   return building;
 }
@@ -1212,6 +1380,19 @@ export function createBuetCampusAcademicModel(
   signMesh.position.set(0, 4.15, frontZ + 1.15);
   building.add(signMesh);
 
+  // Side heritage wood-shuttered windows (±X) & twin corner roof mini-turrets
+  addBuildingSideWindows(building, width, depth, [2.1, 5.5, 8.8], [-2.6, 2.6], 1.55, 1.9, whiteStoneMat, darkWoodMat);
+
+  [-width / 2 + 1.1, width / 2 - 1.1].forEach((tx) => {
+    const turret = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.72, 1.8, 8), whiteStoneMat);
+    turret.position.set(tx, height + 0.9, depth / 2 - 0.9);
+    building.add(turret);
+
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.1, 8), copperDomeMat);
+    cap.position.set(tx, height + 2.3, depth / 2 - 0.9);
+    building.add(cap);
+  });
+
   return building;
 }
 
@@ -1269,6 +1450,17 @@ export function createDhakaHighriseGlassBankModel(
   glassFront.position.set(0, 3.8 + (height - 4.5) / 2, 0);
   building.add(glassFront);
 
+  const glassSide = new THREE.Mesh(new THREE.BoxGeometry(width + 0.18, height - 4.5, depth - 2.2), glassCurtainMat);
+  glassSide.position.set(0, 3.8 + (height - 4.5) / 2, 0);
+  building.add(glassSide);
+
+  // Wraparound horizontal metallic spandrel bands across all 4 sides
+  for (let sy = 5.4; sy < height - 1.2; sy += 3.2) {
+    const spandrel = new THREE.Mesh(new THREE.BoxGeometry(width + 0.34, 0.24, depth + 0.34), finMat);
+    spandrel.position.set(0, sy, 0);
+    building.add(spandrel);
+  }
+
   // Vertical architectural mullions
   for (let fx = -width / 2 + 1.6; fx <= width / 2 - 1.6; fx += 2.6) {
     const fin = new THREE.Mesh(new THREE.BoxGeometry(0.24, height - 3.5, depth + 0.42), finMat);
@@ -1296,7 +1488,15 @@ export function createDhakaHighriseGlassBankModel(
   bankSign.position.set(0, 4.65, depth / 2 + 0.25);
   building.add(bankSign);
 
-  // Rooftop telecom mast & water tank
+  // Stepped rooftop crown penthouse, HVAC chillers & telecom mast
+  const crownCap = new THREE.Mesh(new THREE.BoxGeometry(width - 3.2, 2.1, depth - 3.0), acpMat);
+  crownCap.position.set(0, height + 1.05, 0);
+  building.add(crownCap);
+
+  const chiller = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.1, 1.8), finMat);
+  chiller.position.set(-2.6, height + 2.65, -1.2);
+  building.add(chiller);
+
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.18, 4.6, 6), finMat);
   mast.position.set(width * 0.22, height + 2.3, 0);
   building.add(mast);
@@ -1690,4 +1890,132 @@ export function createDhakaOpenShopModel(
 
   return { mesh: shop, kind };
 }
+
+/**
+ * 15. NEW BUILDING VARIETY: DHAKA BOUTIQUE HOTEL & CONVENTION TOWER
+ * ("হোটেল পূর্বাণী ও কনভেনশন সেন্টার / সোনারগাঁও গ্র্যান্ড স্যুইটস")
+ * Sandstone limestone piers, bronze-tinted curtain glazing on all 4 walls, stepped rooftop sky-lounge,
+ * grand porte-cochere driveway awning with red carpet & bollards, and glowing crown sign.
+ */
+export function createBoutiqueHotelConventionModel(
+  textures: ProceduralTexturePack,
+  variant = 0
+): THREE.Group {
+  const hotel = new THREE.Group();
+  hotel.add(createContactShadowMesh(textures.contactShadow, 21, 16));
+
+  if (!cachedBoutiqueHotelSigns) {
+    cachedBoutiqueHotelSigns = [
+      makeSignTex(
+        '#451a03',
+        '#facc15',
+        'হোটেল পূর্বাণী ও কনভেনশন হল',
+        'আবাসিক স্যুইটস • ব্যাংকুয়েট ও কর্পোরেট সেমিনার',
+        'HOTEL PURBANI & CONVENTION CENTER',
+        false
+      ),
+      makeSignTex(
+        '#1e1b4b',
+        '#fbbf24',
+        'হোটেল ইন্টারকন্টিনেন্টাল স্যুইটস',
+        'রয়্যাল ডাইনিং • রুফটপ লাউঞ্জ • ভিআইপি কনভেনশন',
+        'DHAKA GRAND HERITAGE HOTEL & SUITES',
+        false
+      ),
+      makeSignTex(
+        '#064e3b',
+        '#fde047',
+        'গুলশান গ্র্যান্ড পার্ক রেসিডেন্স',
+        'এক্সিকিউটিভ অফিস • অডিটোরিয়াম • কার পার্কিং',
+        'GRAND PARK CONVENTION & BUSINESS HOTEL',
+        false
+      ),
+    ];
+  }
+
+  const v = Math.abs(variant);
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: v % 2 === 0 ? 0xe7dcc8 : 0xd6d3d1,
+    roughness: 0.72,
+  });
+  const bronzeGlassMat = new THREE.MeshStandardMaterial({
+    color: v % 2 === 0 ? 0x78350f : 0x0f766e,
+    roughness: 0.14,
+    metalness: 0.78,
+  });
+  const goldMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.35, metalness: 0.65 });
+  const darkBaseMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.55 });
+  const carpetMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.88 });
+
+  const width = 16.2;
+  const depth = 11.2;
+  const height = 19.2 + (v % 2) * 3.0;
+
+  // Main tower core
+  const body = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), stoneMat);
+  body.position.set(0, height / 2, 0);
+  body.castShadow = true;
+  body.receiveShadow = true;
+  hotel.add(body);
+
+  // Full 4-sided bronze glazed facade strip + vertical sandstone piers
+  const glassCore = new THREE.Mesh(new THREE.BoxGeometry(width - 2.2, height - 5.2, depth + 0.16), bronzeGlassMat);
+  glassCore.position.set(0, 4.4 + (height - 5.2) / 2, 0);
+  hotel.add(glassCore);
+
+  const sideGlassCore = new THREE.Mesh(new THREE.BoxGeometry(width + 0.16, height - 5.2, depth - 2.6), bronzeGlassMat);
+  sideGlassCore.position.set(0, 4.4 + (height - 5.2) / 2, 0);
+  hotel.add(sideGlassCore);
+
+  for (let px = -width / 2 + 1.0; px <= width / 2 - 1.0; px += 3.55) {
+    const pier = new THREE.Mesh(new THREE.BoxGeometry(0.65, height, depth + 0.36), stoneMat);
+    pier.position.set(px, height / 2, 0);
+    hotel.add(pier);
+  }
+
+  for (let fy = 4.6; fy < height - 1.5; fy += 3.1) {
+    const spandrel = new THREE.Mesh(new THREE.BoxGeometry(width + 0.32, 0.32, depth + 0.32), stoneMat);
+    spandrel.position.set(0, fy, 0);
+    hotel.add(spandrel);
+  }
+
+  // Grand Ground Porte-Cochere Entrance Awning, Red Carpet & Brass Bollards
+  const porteCochere = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.52, 4.2), darkBaseMat);
+  porteCochere.position.set(0, 3.85, depth / 2 + 2.0);
+  hotel.add(porteCochere);
+
+  const goldTrim = new THREE.Mesh(new THREE.BoxGeometry(9.8, 0.16, 4.35), goldMat);
+  goldTrim.position.set(0, 4.12, depth / 2 + 2.0);
+  hotel.add(goldTrim);
+
+  [-4.2, 4.2].forEach((cx) => {
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 3.85, 10), stoneMat);
+    col.position.set(cx, 1.925, depth / 2 + 3.75);
+    hotel.add(col);
+  });
+
+  const carpet = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.05, 4.4), carpetMat);
+  carpet.position.set(0, 0.025, depth / 2 + 2.1);
+  hotel.add(carpet);
+
+  // Rooftop Sky-Lounge Pavilion & Glowing Hotel Crown Signboard
+  const skyLounge = new THREE.Mesh(new THREE.BoxGeometry(10.4, 3.2, 7.4), bronzeGlassMat);
+  skyLounge.position.set(0, height + 1.6, 0);
+  hotel.add(skyLounge);
+
+  const loungeRoof = new THREE.Mesh(new THREE.BoxGeometry(11.4, 0.45, 8.4), goldMat);
+  loungeRoof.position.set(0, height + 3.35, 0);
+  hotel.add(loungeRoof);
+
+  const signTex = cachedBoutiqueHotelSigns[v % cachedBoutiqueHotelSigns.length];
+  const signMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(11.6, 2.35, 0.18),
+    new THREE.MeshBasicMaterial({ map: signTex })
+  );
+  signMesh.position.set(0, height - 1.35, depth / 2 + 0.25);
+  hotel.add(signMesh);
+
+  return hotel;
+}
+
 

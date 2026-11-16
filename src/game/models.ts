@@ -35,6 +35,9 @@ import {
   createCommercialBankTowerModel,
   createBarAssociationChamberModel,
   createTaxAndBankAnnexModel,
+  createItTechHubTowerModel,
+  createGovtMunicipalityOfficeModel,
+  createGarmentExportOfficeFactoryModel,
 } from './officeAdalatModels';
 export {
   createJudgeCourtModel,
@@ -42,6 +45,9 @@ export {
   createCommercialBankTowerModel,
   createBarAssociationChamberModel,
   createTaxAndBankAnnexModel,
+  createItTechHubTowerModel,
+  createGovtMunicipalityOfficeModel,
+  createGarmentExportOfficeFactoryModel,
 };
 import {
   createResidentialApartmentModel,
@@ -58,6 +64,7 @@ import {
   createDhakaTinShedBazaarRowModel,
   createDhakaBusCounterPumpModel,
   createDhakaOpenShopModel,
+  createBoutiqueHotelConventionModel,
   createSeatedShopkeeperModel,
   OpenShopKind,
 } from './cityBuildingModels';
@@ -76,6 +83,7 @@ export {
   createDhakaTinShedBazaarRowModel,
   createDhakaBusCounterPumpModel,
   createDhakaOpenShopModel,
+  createBoutiqueHotelConventionModel,
 };
 export type { OpenShopKind };
 
@@ -529,18 +537,17 @@ export function createRickshawModel(textures: ProceduralTexturePack): RickshawRi
   turboFlameR.visible = false;
   chassisTilt.add(turboFlameR);
 
-  // Chai-Break Invincibility Protective Shield Dome (lightweight translucent shell)
-  const auraGeo = new THREE.SphereGeometry(1.75, 16, 12);
+  // Chai-Break Invincibility Ground Energy Halo Ring (flat ring under wheels — no bubble around rickshaw)
+  const auraGeo = new THREE.TorusGeometry(1.56, 0.06, 6, 18);
   const auraMat = new THREE.MeshBasicMaterial({
     color: 0x34d399,
     transparent: true,
-    opacity: 0.24,
-    wireframe: false,
+    opacity: 0.72,
     depthWrite: false,
   });
   const invincibleAura = new THREE.Mesh(auraGeo, auraMat);
-  invincibleAura.position.set(0, 1.05, -0.05);
-  invincibleAura.scale.set(0.95, 0.88, 1.28);
+  invincibleAura.rotation.x = Math.PI / 2;
+  invincibleAura.position.set(0, 0.07, 0.05);
   invincibleAura.visible = false;
   chassisTilt.add(invincibleAura);
 
@@ -5168,7 +5175,7 @@ export function createCityGridCell(
           heightStretch = 1.0
         ) => {
           let bMesh: THREE.Group;
-          const t = Math.abs(bType) % 24;
+          const t = Math.abs(bType) % 30;
           const v = Math.abs(vSeed);
           const vSlot = v % 3;
           let baseScale = 0.78;
@@ -5186,6 +5193,12 @@ export function createCityGridCell(
           else if (t === 10) baseScale = 0.66;
           else if (t === 11) baseScale = 0.54;
           else if (t === 18) baseScale = 0.74;
+          else if (t === 24) baseScale = 0.68;
+          else if (t === 25) baseScale = 0.56;
+          else if (t === 26) baseScale = 0.64;
+          else if (t === 27) baseScale = 0.66;
+          else if (t === 28) baseScale = 0.44;
+          else if (t === 29) baseScale = 0.48;
           else baseScale = vSlot === 0 ? 0.84 : vSlot === 1 ? 0.44 : 0.48;
 
           const bKey = `${t}_${vSlot}`;
@@ -5216,9 +5229,21 @@ export function createCityGridCell(
             } else if (t === 10) {
               proto = createCityClinicHospitalModel(textures);
             } else if (t === 11) {
-              proto = createCommercialBankTowerModel(textures);
+              proto = createCommercialBankTowerModel(textures, vSlot);
             } else if (t === 18) {
               proto = createMixedUseMidriseModel(vSlot, textures);
+            } else if (t === 24) {
+              proto = createItTechHubTowerModel(textures, vSlot);
+            } else if (t === 25) {
+              proto = createGovtMunicipalityOfficeModel(textures, vSlot);
+            } else if (t === 26) {
+              proto = createGarmentExportOfficeFactoryModel(textures, vSlot);
+            } else if (t === 27) {
+              proto = createBoutiqueHotelConventionModel(textures, vSlot);
+            } else if (t === 28) {
+              proto = createJudgeCourtModel(textures);
+            } else if (t === 29) {
+              proto = createSecretariatOfficeModel(textures, vSlot);
             } else {
               if (vSlot === 0) {
                 const wrapper = new THREE.Group();
@@ -5262,27 +5287,27 @@ export function createCityGridCell(
         const rotEW = sz > 0 ? Math.PI : 0;
         const rotCorner = Math.atan2(-sx, -sz);
 
-        // Streetfront corners & rows showcase diverse Dhaka New Market, Nilkhet, DU/BUET, Hawkers Tin-Shed, Bus Counters & Banks
-        const cornerTypes = [1, 4, 20, 23, 5, 19, 8, 2, 13, 22];
+        // Streetfront corners & rows showcase diverse Dhaka markets, offices, banks, courts, hotels, IT hubs & civic complexes
+        const cornerTypes = [1, 4, 20, 23, 5, 19, 10, 24, 27, 22, 25, 11];
         const cornerType = cornerTypes[(qHash + sx + sz) % cornerTypes.length];
 
         // Spot 1: Corner Anchor diagonally facing crossing intersection
         spawnBuilding(cornerType, cellIndex * 5 + qSeed, sx * 18.0, sz * 18.0, rotCorner, false, 0.98);
 
-        // Spot 2 & 3: Continuous N-S Streetfront Dhaka Market & Heritage Row
-        const nsRowA = [1, 20, 4, 23][(qHash + 1) % 4];
-        const nsRowB = [23, 19, 7, 12][(qHash + 2) % 4];
+        // Spot 2 & 3: Continuous N-S Streetfront Dhaka Market, Office & Civic Row
+        const nsRowA = [1, 24, 4, 26, 9, 25][(qHash + 1) % 6];
+        const nsRowB = [23, 27, 7, 12, 29, 18][(qHash + 2) % 6];
         spawnBuilding(nsRowA, cellIndex * 7 + qSeed + 1, sx * 17.2, sz * 29.8, rotNS, false, 1.0);
         spawnBuilding(nsRowB, cellIndex * 11 + qSeed + 2, sx * 17.2, sz * 42.2, rotNS, false, 1.04);
 
-        // Spot 4 & 5: Continuous E-W Streetfront New Market / Nilkhet / Science Lab Row
-        const ewRowA = [13, 22, 8, 21][(qHash + 3) % 4];
-        const ewRowB = [5, 14, 19, 2][(qHash + 4) % 4];
+        // Spot 4 & 5: Continuous E-W Streetfront Offices, Markets, Courts, Garments & Banks Row
+        const ewRowA = [13, 22, 25, 21, 11, 28][(qHash + 3) % 6];
+        const ewRowB = [5, 14, 19, 2, 26, 10][(qHash + 4) % 6];
         spawnBuilding(ewRowA, cellIndex * 13 + qSeed + 3, sx * 29.8, sz * 17.2, rotEW, false, 1.0);
         spawnBuilding(ewRowB, cellIndex * 17 + qSeed + 4, sx * 42.2, sz * 17.2, rotEW, false, 1.04);
 
-        // Spot 6..9: Multi-tiered Inner-Block Skyline (High-Rise Banks, Apartments, Under-Construction, Towers)
-        const skyTypes = [0, 22, 6, 11, 15, 16, 18, 20];
+        // Spot 6..9: Multi-tiered Inner-Block Skyline (IT Hubs, Secretariat, High-Rise Banks, Hotels, Apartments, Towers)
+        const skyTypes = [0, 22, 24, 11, 15, 27, 18, 20, 26, 29, 25, 6];
         const st6 = skyTypes[(qHash + 1) % skyTypes.length];
         const st7 = skyTypes[(qHash + 3) % skyTypes.length];
         const st8 = skyTypes[(qHash + 5) % skyTypes.length];
