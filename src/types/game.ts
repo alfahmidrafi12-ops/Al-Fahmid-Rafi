@@ -62,7 +62,33 @@ export const DRIVER_PROFILES: Record<DriverId, DriverProfile> = {
 
 export type SignalColor = 'RED' | 'YELLOW' | 'GREEN';
 export type TrafficLightState = SignalColor | 'NONE';
-export type WeatherType = 'SUNNY' | 'CLOUDY';
+export type WeatherType = 'SUNNY' | 'CLOUDY' | 'RAINY' | 'GOLDEN';
+
+export const WEATHER_LABELS_BN: Record<
+  WeatherType,
+  { nameBn: string; shortBn: string; descBn: string }
+> = {
+  SUNNY: {
+    nameBn: 'রোদ্রোজ্জ্বল ঢাকা',
+    shortBn: 'রোদ',
+    descBn: 'ঝকঝকে রোদ ও সর্বোচ্চ গ্রিপ',
+  },
+  CLOUDY: {
+    nameBn: 'মেঘলা বর্ষা আকাশ',
+    shortBn: 'মেঘলা',
+    descBn: 'হালকা ভেজা রাস্তা ও মেঘ',
+  },
+  RAINY: {
+    nameBn: 'ঢাকার ঝুম বৃষ্টি',
+    shortBn: 'বৃষ্টি',
+    descBn: 'পিচ্ছিল রাস্তা — সাবধানে ড্রিফট',
+  },
+  GOLDEN: {
+    nameBn: 'সোনালি বিকেল',
+    shortBn: 'বিকেল',
+    descBn: 'গোধূলি আলো ও শান্ত বাতাস',
+  },
+};
 
 export interface TrafficSignalHudInfo {
   state: TrafficLightState;
@@ -91,12 +117,16 @@ export interface HudSnapshot {
   distanceMeters: number;
   bellCooldownRatio: number;
   turboRemainingRatio: number;
+  invincibleRemainingRatio: number;
+  jhalMuriRemainingRatio: number;
   activeMobCount: number;
   trafficCount: number;
   weather: WeatherType;
+  autoWeather: boolean;
   roadGrip: number;
   trafficSignal?: TrafficSignalHudInfo;
   breakingNews?: BreakingNewsItem;
+  gridlockActive: boolean;
 }
 
 export interface ScreenPopup {

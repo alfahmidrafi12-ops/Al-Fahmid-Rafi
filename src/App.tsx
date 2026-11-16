@@ -26,10 +26,14 @@ const INITIAL_HUD: HudSnapshot = {
   distanceMeters: 0,
   bellCooldownRatio: 1,
   turboRemainingRatio: 0,
+  invincibleRemainingRatio: 0,
+  jhalMuriRemainingRatio: 0,
   activeMobCount: 0,
   trafficCount: 0,
   weather: 'SUNNY',
+  autoWeather: true,
   roadGrip: 1.0,
+  gridlockActive: false,
 };
 
 export function App() {
@@ -40,6 +44,7 @@ export function App() {
   const [selectedDriver, setSelectedDriver] = useState<DriverId>('kader');
   const [cameraMode, setCameraMode] = useState<CameraMode>(CameraMode.CHASE);
   const [weather, setWeather] = useState<WeatherType>('SUNNY');
+  const [autoWeather, setAutoWeather] = useState<boolean>(true);
   const [isMuted, setIsMuted] = useState(false);
   const [hud, setHud] = useState<HudSnapshot>(INITIAL_HUD);
   const [popups, setPopups] = useState<ScreenPopup[]>([]);
@@ -79,7 +84,17 @@ export function App() {
 
   const handleSelectWeather = useCallback((nextWeather: WeatherType) => {
     setWeather(nextWeather);
+    setAutoWeather(false);
+    engineRef.current?.setAutoWeather(false);
     engineRef.current?.applyWeather(nextWeather);
+  }, []);
+
+  const handleToggleAutoWeather = useCallback(() => {
+    setAutoWeather((prev) => {
+      const next = !prev;
+      engineRef.current?.setAutoWeather(next);
+      return next;
+    });
   }, []);
 
   const handleChangeCamera = useCallback((mode: CameraMode) => {
@@ -131,8 +146,10 @@ export function App() {
         <StartMenu
           selectedDriver={selectedDriver}
           onSelectDriver={handleSelectDriver}
-          weather={weather}
+          weather={hud.weather || weather}
+          autoWeather={hud.autoWeather ?? autoWeather}
           onSelectWeather={handleSelectWeather}
+          onToggleAutoWeather={handleToggleAutoWeather}
           highScore={hud.highScore}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
@@ -148,8 +165,8 @@ export function App() {
           driverId={selectedDriver}
           cameraMode={cameraMode}
           onChangeCamera={handleChangeCamera}
-          weather={weather}
           onChangeWeather={handleSelectWeather}
+          onToggleAutoWeather={handleToggleAutoWeather}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
           onRingBell={handleRingBell}

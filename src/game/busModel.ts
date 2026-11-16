@@ -868,5 +868,6 @@ export function createDhakaBusModel(textures: ProceduralTexturePack): THREE.Grou
     ],
   });
 
+  root.scale.setScalar(0.84);
   return root;
 }

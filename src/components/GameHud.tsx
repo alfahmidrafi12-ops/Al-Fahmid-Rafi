@@ -5,10 +5,13 @@ import {
   ChevronDown,
   ChevronUp,
   Cloud,
+  CloudRain,
   Gamepad2,
   Newspaper,
   Pause,
+  Shuffle,
   Sun,
+  Sunset,
   Volume2,
   VolumeX,
 } from 'lucide-react';
@@ -28,8 +31,8 @@ interface GameHudProps {
   driverId: DriverId;
   cameraMode: CameraMode;
   onChangeCamera: (mode: CameraMode) => void;
-  weather: WeatherType;
   onChangeWeather: (weather: WeatherType) => void;
+  onToggleAutoWeather: () => void;
   isMuted: boolean;
   onToggleMute: () => void;
   onRingBell: () => void;
@@ -43,8 +46,8 @@ export const GameHud: React.FC<GameHudProps> = ({
   driverId,
   cameraMode,
   onChangeCamera,
-  weather,
   onChangeWeather,
+  onToggleAutoWeather,
   isMuted,
   onToggleMute,
   onRingBell,
@@ -177,6 +180,36 @@ export const GameHud: React.FC<GameHudProps> = ({
               মালাই চা টার্বো শিল্ড ({Math.ceil(hud.turboRemainingRatio * 4.5)}s)
             </div>
           )}
+
+          {hud.invincibleRemainingRatio > 0 && (
+            <div className="mt-2">
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
+                <span>☕ চা-ব্রেক শিল্ড (অজেয়)</span>
+                <span className="font-display-num">{Math.ceil(hud.invincibleRemainingRatio * 6.0)}s</span>
+              </div>
+              <div className="mt-1 h-1.5 w-44 overflow-hidden rounded-full bg-emerald-950/90 sm:w-52">
+                <div
+                  className="h-full bg-emerald-400 transition-transform duration-75 origin-left"
+                  style={{ transform: `scaleX(${Math.min(1, hud.invincibleRemainingRatio)})` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {hud.jhalMuriRemainingRatio > 0 && (
+            <div className="mt-2">
+              <div className="flex items-center justify-between text-xs font-bold text-orange-300">
+                <span>🌶️ ঝালমুড়ি স্পিড বুস্ট</span>
+                <span className="font-display-num">{Math.ceil(hud.jhalMuriRemainingRatio * 4.5)}s</span>
+              </div>
+              <div className="mt-1 h-1.5 w-44 overflow-hidden rounded-full bg-orange-950/90 sm:w-52">
+                <div
+                  className="h-full bg-orange-400 transition-transform duration-75 origin-left"
+                  style={{ transform: `scaleX(${Math.min(1, hud.jhalMuriRemainingRatio)})` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Center: Traffic Signal Alert + Dhaka Breaking News Broadcast */}
@@ -232,6 +265,16 @@ export const GameHud: React.FC<GameHudProps> = ({
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {hud.gridlockActive && (
+            <div
+              className="pointer-events-auto flex items-center gap-2 rounded-xl border border-amber-400/60 bg-amber-950/95 px-3.5 py-1.5 text-xs font-extrabold text-amber-200 shadow-xl"
+              role="status"
+            >
+              <span>🚧</span>
+              <span>সামনে তীব্র যানজট! চিপা গলি দিয়ে কাটান বা [B] বেল চাপুন</span>
             </div>
           )}
 
@@ -452,14 +495,27 @@ export const GameHud: React.FC<GameHudProps> = ({
               ))}
             </div>
 
-            {/* Weather Presets (Sunny / Cloudy) */}
+            {/* Weather Presets (Live Random Dhaka Weather + Manual Picks) */}
             <div className="hidden items-center gap-1 rounded-lg bg-zinc-900 p-0.5 sm:flex">
+              <button
+                type="button"
+                onClick={onToggleAutoWeather}
+                title="স্বয়ংক্রিয় র‍্যান্ডম ঢাকা আবহাওয়া"
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer ${
+                  hud.autoWeather
+                    ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/40'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Shuffle className="h-3 w-3" />
+                <span>অটো</span>
+              </button>
               <button
                 type="button"
                 onClick={() => onChangeWeather('SUNNY')}
                 title="রোদ্রোজ্জ্বল আবহাওয়া"
                 className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer ${
-                  weather === 'SUNNY' ? 'bg-zinc-700 text-amber-300' : 'text-zinc-400 hover:text-white'
+                  hud.weather === 'SUNNY' ? 'bg-zinc-700 text-amber-300' : 'text-zinc-400 hover:text-white'
                 }`}
               >
                 <Sun className="h-3.5 w-3.5" />
@@ -470,11 +526,33 @@ export const GameHud: React.FC<GameHudProps> = ({
                 onClick={() => onChangeWeather('CLOUDY')}
                 title="মেঘলা আবহাওয়া"
                 className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer ${
-                  weather === 'CLOUDY' ? 'bg-zinc-700 text-sky-300' : 'text-zinc-400 hover:text-white'
+                  hud.weather === 'CLOUDY' ? 'bg-zinc-700 text-sky-300' : 'text-zinc-400 hover:text-white'
                 }`}
               >
                 <Cloud className="h-3.5 w-3.5" />
                 <span>মেঘলা</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeWeather('RAINY')}
+                title="ঢাকার ঝুম বৃষ্টি"
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer ${
+                  hud.weather === 'RAINY' ? 'bg-zinc-700 text-indigo-300' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <CloudRain className="h-3.5 w-3.5" />
+                <span>বৃষ্টি</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeWeather('GOLDEN')}
+                title="সোনালি বিকেল"
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer ${
+                  hud.weather === 'GOLDEN' ? 'bg-zinc-700 text-orange-300' : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Sunset className="h-3.5 w-3.5" />
+                <span>বিকেল</span>
               </button>
             </div>
 

@@ -707,5 +707,6 @@ export function createTrafficRickshawModel(
   B(0.05, 0.1, 0.02, mat.tail, -0.4, 0.4, -0.74);
   B(0.05, 0.1, 0.02, mat.tail, 0.4, 0.4, -0.74);
 
+  root.scale.setScalar(0.84);
   return root;
 }

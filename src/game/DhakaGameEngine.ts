@@ -12,11 +12,13 @@ import {
   ScreenPopup,
   SignalColor,
   TrafficSignalHudInfo,
+  WEATHER_LABELS_BN,
   WeatherType,
 } from '../types/game';
 import {
   CityCellOpenShopData,
   CityCellStallData,
+  CityCellVendorKioskData,
   CrowBirdRig,
   createCityGridCell,
   createCngModel,
@@ -34,6 +36,9 @@ import {
   createRickshawModel,
   createTrafficRickshawModel,
   DriverRig,
+  hasEwUTurnBay,
+  hasNsUTurnBay,
+  isSignalIntersection,
   KiteRig,
   MobRig,
   PedestrianRig,
@@ -43,7 +48,7 @@ import {
 } from './models';
 import { createDiverseDhakaNpcModel } from './npcModels';
 import { createProceduralTextures, ProceduralTexturePack } from './textures';
-import { createBatchMaterialCache } from './meshBatcher';
+import { createBatchMaterialCache, mergeStaticGroupByMaterial } from './meshBatcher';
 
 // Module-scope reusable math helpers (Zero GC in animation loop)
 const _v1 = new THREE.Vector3();
@@ -58,6 +63,8 @@ const HALF_GRID_SPAN = (CELL_SIZE * GRID_SIZE) / 2; // 240m
 const ROAD_HALF_DRIVABLE = 7.95; // Allows brushing right up to the curb edge & crossing pedestrians
 const BELL_COOLDOWN_SEC = 3.8;
 const TURBO_DURATION_SEC = 4.5;
+const INVINCIBLE_DURATION_SEC = 6.0;
+const JHAL_MURI_DURATION_SEC = 4.5;
 const COMBO_WINDOW_SEC = 4.2;
 const HIGH_SCORE_STORAGE_KEY = 'dhandabaz_3d_highscore_v3';
 
@@ -84,12 +91,21 @@ const DISTRICT_NAMES = [
 interface CityCell {
   group: THREE.Group;
   metroGroup: THREE.Group;
+  signalGroup: THREE.Group;
+  nsMedianSolid: THREE.Group;
+  nsMedianUTurn: THREE.Group;
+  ewMedianSolid: THREE.Group;
+  ewMedianUTurn: THREE.Group;
+  hasSignal: boolean;
+  hasNsUTurn: boolean;
+  hasEwUTurn: boolean;
   gridX: number;
   gridZ: number;
   xCenter: number;
   zCenter: number;
   stalls: CityCellStallData[];
   openShops: CityCellOpenShopData[];
+  vendorKiosks: CityCellVendorKioskData[];
   lampBulbs: THREE.Mesh[];
   asphaltMats: THREE.MeshStandardMaterial[];
   lightRig: TrafficLightRig;
@@ -132,6 +148,7 @@ interface TrafficVehicle {
   tiltRoll: number;
   tiltPitch: number;
   damageSmokeAcc: number;
+  isGridlocked: boolean;
 }
 
 const VEHICLE_COMBAT_SPECS: Record<
@@ -202,6 +219,10 @@ interface ActiveMob {
   fallTiltX: number;
   knockVelX: number;
   knockVelZ: number;
+  injuredLeaving: boolean;
+  leaveTimer: number;
+  leaveDirX: number;
+  leaveDirZ: number;
 }
 
 interface DebrisParticle {
@@ -213,6 +234,17 @@ interface DebrisParticle {
   scale: number;
   life: number;
   maxLife: number;
+}
+
+interface SpeechBubbleSlot {
+  sprite: THREE.Sprite;
+  active: boolean;
+  targetObj: THREE.Object3D | null;
+  yOffset: number;
+  life: number;
+  maxLife: number;
+  baseScaleX: number;
+  baseScaleY: number;
 }
 
 export interface EngineCallbacks {
@@ -263,6 +295,8 @@ export class DhakaGameEngine {
   private kites: KiteRig[] = [];
   private metroTrain?: THREE.Group;
   private metroTrainZ = -58;
+  private metroTrainB?: THREE.Group;
+  private metroTrainBZ = 74;
   private activeCrossingHudInfo?: TrafficSignalHudInfo;
 
   // Instanced debris system (Zero GC)
@@ -279,6 +313,8 @@ export class DhakaGameEngine {
   private phase: GamePhase = GamePhase.MENU;
   private cameraMode: CameraMode = CameraMode.CHASE;
   private weather: WeatherType = 'SUNNY';
+  private autoWeather = true;
+  private weatherChangeTimer = 34;
   private roadGrip = 1.0;
 
   private cloudGroup!: THREE.Group;
@@ -287,7 +323,10 @@ export class DhakaGameEngine {
   private ambientMotes!: THREE.Points;
   private ambientMotesMat!: THREE.PointsMaterial;
   private ambientMotesPos!: Float32Array;
-  private readonly moteCount = 150;
+  private readonly moteCount = 85;
+  private rainLines!: THREE.LineSegments;
+  private rainPos!: Float32Array;
+  private readonly rainCount = 180;
   private skyDome!: THREE.Mesh;
   private skyUniforms!: {
     uZenithColor: { value: THREE.Color };
@@ -325,6 +364,8 @@ export class DhakaGameEngine {
   private distanceMeters = 0;
   private bellCooldown = 0;
   private turboTimer = 0;
+  private invincibleTimer = 0;
+  private jhalMuriTimer = 0;
   private bellJiggleTimer = 0;
   private popupCounter = 1;
   private speedBumpCooldown = 0;
@@ -341,6 +382,19 @@ export class DhakaGameEngine {
   private newsCooldown = 0;
   private newsCounter = 1;
   private lastChaseNewsAt = 0;
+
+  // Floating 3D Scold / Galagali Speech Bubble pool (Zero GC)
+  private speechPool: SpeechBubbleSlot[] = [];
+
+  // Procedural Dhaka Gridlock Event State
+  private gridlockActive = false;
+  private gridlockCooldown = 16;
+  private gridlockTimer = 0;
+  private gridlockAxis: 'Z' | 'X' = 'Z';
+  private gridlockDir: -1 | 1 = -1;
+  private gridlockAveBase = 0;
+  private gridlockEndAlong = 0;
+  private gridlockHitCount = 0;
 
   private input: InputState = {
     forward: false,
@@ -424,11 +478,11 @@ export class DhakaGameEngine {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.04;
     this.renderer.setPixelRatio(
-      this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 1.35)
+      this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 1.15)
     );
     this.renderer.setSize(width, height);
     this.renderer.shadowMap.enabled = !this.isSoftwareGl;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
     this.container.appendChild(this.renderer.domElement);
 
@@ -438,7 +492,7 @@ export class DhakaGameEngine {
     this.scene.environmentIntensity = 0.68;
     pmremGenerator.dispose();
 
-    const maxAniso = this.renderer.capabilities.getMaxAnisotropy();
+    const maxAniso = Math.min(4, this.renderer.capabilities.getMaxAnisotropy());
     this.textures = createProceduralTextures(maxAniso);
 
     this.hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x475569, 1.15);
@@ -448,14 +502,14 @@ export class DhakaGameEngine {
     this.sunLight = new THREE.DirectionalLight(0xfff1d6, 2.55);
     this.sunLight.position.set(28, 46, 22);
     this.sunLight.castShadow = !this.isSoftwareGl;
-    this.sunLight.shadow.mapSize.set(1024, 1024);
-    const d = 32;
+    this.sunLight.shadow.mapSize.set(768, 768);
+    const d = 22;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
     this.sunLight.shadow.camera.bottom = -d;
     this.sunLight.shadow.camera.near = 2;
-    this.sunLight.shadow.camera.far = 105;
+    this.sunLight.shadow.camera.far = 92;
     this.sunLight.shadow.bias = -0.0005;
     this.sunLight.shadow.normalBias = 0.02;
     this.scene.add(this.sunLight);
@@ -613,6 +667,33 @@ export class DhakaGameEngine {
     this.ambientMotes.frustumCulled = false;
     this.scene.add(this.ambientMotes);
 
+    // 2f. Monsoon Dhaka Rain Streaks (Zero-GC LineSegments buffer toggled cleanly on RAINY weather)
+    this.rainPos = new Float32Array(this.rainCount * 6);
+    for (let i = 0; i < this.rainCount; i++) {
+      const rx = (Math.random() - 0.5) * 52;
+      const ry = 0.5 + Math.random() * 16.5;
+      const rz = (Math.random() - 0.5) * 52;
+      const b = i * 6;
+      this.rainPos[b] = rx;
+      this.rainPos[b + 1] = ry;
+      this.rainPos[b + 2] = rz;
+      this.rainPos[b + 3] = rx - 0.14;
+      this.rainPos[b + 4] = ry - 0.92;
+      this.rainPos[b + 5] = rz;
+    }
+    const rainGeo = new THREE.BufferGeometry();
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(this.rainPos, 3));
+    const rainMat = new THREE.LineBasicMaterial({
+      color: 0xcbd5e1,
+      transparent: true,
+      opacity: 0.48,
+      depthWrite: false,
+    });
+    this.rainLines = new THREE.LineSegments(rainGeo, rainMat);
+    this.rainLines.frustumCulled = false;
+    this.rainLines.visible = false;
+    this.scene.add(this.rainLines);
+
     // 3. 5x5 INFINITE 2D CITY SUPER-CELL GRID (Instanced/shared templates & pre-baked geometry for instant load & max view distance)
     const batchCache = createBatchMaterialCache();
     const sharedTemplates: SharedCellTemplateMap = new Map();
@@ -623,22 +704,29 @@ export class DhakaGameEngine {
         const xCenter = gx * CELL_SIZE;
         const zCenter = gz * CELL_SIZE;
         res.group.position.set(xCenter, 0, zCenter);
-        // Metro viaduct appears ONLY along the central main corridor (gridX === 0)
-        res.metroGroup.visible = gx === 0;
         this.scene.add(res.group);
 
         const initialSignal: SignalColor = (gx + gz) % 2 === 0 ? 'GREEN' : 'RED';
         res.lightRig.setSignal(initialSignal);
 
-        this.cells.push({
+        const cell: CityCell = {
           group: res.group,
           metroGroup: res.metroGroup,
+          signalGroup: res.signalGroup,
+          nsMedianSolid: res.nsMedianSolid,
+          nsMedianUTurn: res.nsMedianUTurn,
+          ewMedianSolid: res.ewMedianSolid,
+          ewMedianUTurn: res.ewMedianUTurn,
+          hasSignal: true,
+          hasNsUTurn: false,
+          hasEwUTurn: false,
           gridX: gx,
           gridZ: gz,
           xCenter,
           zCenter,
           stalls: res.stalls,
           openShops: res.openShops,
+          vendorKiosks: res.vendorKiosks,
           lampBulbs: res.lampBulbs,
           asphaltMats: res.asphaltMats,
           lightRig: res.lightRig,
@@ -647,88 +735,104 @@ export class DhakaGameEngine {
           crossingNameBn: this.getCrossingName(gx, gz),
           playerViolated: false,
           playerRewarded: false,
-        });
+        };
+        this.syncCellLayout(cell);
+        this.cells.push(cell);
         cellIdx++;
       }
     }
 
-    // 3b. Dedicated Animated Overhead Dhaka Metro Rail (MRT-6) 4-Coach Train along gridX === 0
+    // 3b. Dedicated Animated Dual Opposing Dhaka Metro Rail (MRT-6) 4-Coach Trains along gridX === 0
     this.metroTrain = createDhakaMetroTrainModel(this.textures);
-    this.metroTrain.position.set(2.0, 10.26, this.metroTrainZ);
+    this.metroTrain.position.set(2.0, 10.42, this.metroTrainZ);
     this.scene.add(this.metroTrain);
 
-    // 4. 2D INFINITE DHAKA TRAFFIC (Abundant Cycle Rickshaws + Motorcycles, Private Cars, CNGs, Legunas, Buses & Trucks)
+    this.metroTrainB = createDhakaMetroTrainModel(this.textures);
+    this.metroTrainB.position.set(-2.0, 10.42, this.metroTrainBZ);
+    this.metroTrainB.rotation.y = Math.PI;
+    this.scene.add(this.metroTrainB);
+
+    // 4. 2D INFINITE DHAKA 4-LANE DIVIDED TRAFFIC (Inner Fast Lane ±2.2m | Outer Slow/Rickshaw Lane ±5.7m)
     const zConfigs = [
-      { type: 'rickshaw' as const, laneOffset: -5.2, dir: -1 as const, speed: 5.2, posOffset: -18 },
-      { type: 'rickshaw' as const, laneOffset: -4.8, dir: -1 as const, speed: 4.8, posOffset: -54 },
-      { type: 'rickshaw' as const, laneOffset: -5.3, dir: -1 as const, speed: 5.7, posOffset: 26 },
-      { type: 'rickshaw' as const, laneOffset: -4.9, dir: -1 as const, speed: 5.0, posOffset: 76 },
-      { type: 'rickshaw' as const, laneOffset: -5.1, dir: -1 as const, speed: 5.5, posOffset: -94 },
-      { type: 'truck' as const, laneOffset: -3.7, dir: -1 as const, speed: 6.9, posOffset: -34 },
-      { type: 'bus' as const, laneOffset: -3.8, dir: -1 as const, speed: 7.9, posOffset: -76 },
-      { type: 'leguna' as const, laneOffset: -3.3, dir: -1 as const, speed: 9.2, posOffset: 42 },
-      { type: 'car' as const, laneOffset: -2.2, dir: -1 as const, speed: 11.4, posOffset: -24 },
-      { type: 'car' as const, laneOffset: -2.3, dir: -1 as const, speed: 10.8, posOffset: 88 },
-      { type: 'motorcycle' as const, laneOffset: -1.4, dir: -1 as const, speed: 13.8, posOffset: -64 },
-      { type: 'motorcycle' as const, laneOffset: -2.7, dir: -1 as const, speed: 14.5, posOffset: 12 },
-      { type: 'cng' as const, laneOffset: -1.8, dir: -1 as const, speed: 12.2, posOffset: -46 },
-      { type: 'cng' as const, laneOffset: -1.9, dir: -1 as const, speed: 11.4, posOffset: 62 },
-      { type: 'rickshaw' as const, laneOffset: 5.2, dir: 1 as const, speed: 5.4, posOffset: -42 },
-      { type: 'rickshaw' as const, laneOffset: 4.8, dir: 1 as const, speed: 4.9, posOffset: 16 },
-      { type: 'rickshaw' as const, laneOffset: 5.3, dir: 1 as const, speed: 5.8, posOffset: 58 },
-      { type: 'rickshaw' as const, laneOffset: 4.9, dir: 1 as const, speed: 5.1, posOffset: -84 },
-      { type: 'truck' as const, laneOffset: 3.7, dir: 1 as const, speed: 6.7, posOffset: -60 },
-      { type: 'bus' as const, laneOffset: 3.8, dir: 1 as const, speed: 7.6, posOffset: 28 },
-      { type: 'leguna' as const, laneOffset: 3.3, dir: 1 as const, speed: 9.0, posOffset: -90 },
-      { type: 'car' as const, laneOffset: 2.2, dir: 1 as const, speed: 11.6, posOffset: -10 },
-      { type: 'car' as const, laneOffset: 2.3, dir: 1 as const, speed: 10.6, posOffset: 68 },
-      { type: 'motorcycle' as const, laneOffset: 1.4, dir: 1 as const, speed: 14.2, posOffset: -50 },
-      { type: 'motorcycle' as const, laneOffset: 2.7, dir: 1 as const, speed: 13.6, posOffset: 44 },
-      { type: 'cng' as const, laneOffset: 1.8, dir: 1 as const, speed: 12.4, posOffset: -24 },
-      { type: 'cng' as const, laneOffset: 1.9, dir: 1 as const, speed: 11.8, posOffset: 82 },
+      { type: 'rickshaw' as const, laneOffset: -5.75, dir: -1 as const, speed: 5.2, posOffset: -18 },
+      { type: 'rickshaw' as const, laneOffset: -5.45, dir: -1 as const, speed: 4.8, posOffset: -54 },
+      { type: 'rickshaw' as const, laneOffset: -5.85, dir: -1 as const, speed: 5.7, posOffset: 26 },
+      { type: 'rickshaw' as const, laneOffset: -5.55, dir: -1 as const, speed: 5.0, posOffset: 76 },
+      { type: 'rickshaw' as const, laneOffset: -5.7, dir: -1 as const, speed: 5.5, posOffset: -94 },
+      { type: 'truck' as const, laneOffset: -2.55, dir: -1 as const, speed: 6.9, posOffset: -34 },
+      { type: 'bus' as const, laneOffset: -2.65, dir: -1 as const, speed: 7.9, posOffset: -76 },
+      { type: 'leguna' as const, laneOffset: -2.4, dir: -1 as const, speed: 9.2, posOffset: 42 },
+      { type: 'car' as const, laneOffset: -2.1, dir: -1 as const, speed: 11.4, posOffset: -24 },
+      { type: 'car' as const, laneOffset: -2.2, dir: -1 as const, speed: 10.8, posOffset: 88 },
+      { type: 'motorcycle' as const, laneOffset: -1.65, dir: -1 as const, speed: 13.8, posOffset: -64 },
+      { type: 'motorcycle' as const, laneOffset: -4.45, dir: -1 as const, speed: 14.5, posOffset: 12 },
+      { type: 'cng' as const, laneOffset: -1.9, dir: -1 as const, speed: 12.2, posOffset: -46 },
+      { type: 'cng' as const, laneOffset: -2.0, dir: -1 as const, speed: 11.4, posOffset: 62 },
+      { type: 'rickshaw' as const, laneOffset: 5.75, dir: 1 as const, speed: 5.4, posOffset: -42 },
+      { type: 'rickshaw' as const, laneOffset: 5.45, dir: 1 as const, speed: 4.9, posOffset: 16 },
+      { type: 'rickshaw' as const, laneOffset: 5.85, dir: 1 as const, speed: 5.8, posOffset: 58 },
+      { type: 'rickshaw' as const, laneOffset: 5.55, dir: 1 as const, speed: 5.1, posOffset: -84 },
+      { type: 'truck' as const, laneOffset: 2.55, dir: 1 as const, speed: 6.7, posOffset: -60 },
+      { type: 'bus' as const, laneOffset: 2.65, dir: 1 as const, speed: 7.6, posOffset: 28 },
+      { type: 'leguna' as const, laneOffset: 2.4, dir: 1 as const, speed: 9.0, posOffset: -90 },
+      { type: 'car' as const, laneOffset: 2.1, dir: 1 as const, speed: 11.6, posOffset: -10 },
+      { type: 'car' as const, laneOffset: 2.2, dir: 1 as const, speed: 10.6, posOffset: 68 },
+      { type: 'motorcycle' as const, laneOffset: 1.65, dir: 1 as const, speed: 14.2, posOffset: -50 },
+      { type: 'motorcycle' as const, laneOffset: 4.45, dir: 1 as const, speed: 13.6, posOffset: 44 },
+      { type: 'cng' as const, laneOffset: 1.9, dir: 1 as const, speed: 12.4, posOffset: -24 },
+      { type: 'cng' as const, laneOffset: 2.0, dir: 1 as const, speed: 11.8, posOffset: 82 },
     ];
 
     const xConfigs = [
-      { type: 'rickshaw' as const, laneOffset: -5.2, dir: 1 as const, speed: 5.3, posOffset: -82 },
-      { type: 'rickshaw' as const, laneOffset: -4.9, dir: 1 as const, speed: 4.7, posOffset: -22 },
-      { type: 'rickshaw' as const, laneOffset: -5.3, dir: 1 as const, speed: 5.6, posOffset: 48 },
-      { type: 'truck' as const, laneOffset: -3.7, dir: 1 as const, speed: 6.8, posOffset: -52 },
-      { type: 'bus' as const, laneOffset: -3.8, dir: 1 as const, speed: 7.8, posOffset: 32 },
-      { type: 'car' as const, laneOffset: -2.2, dir: 1 as const, speed: 11.2, posOffset: -12 },
-      { type: 'car' as const, laneOffset: -2.3, dir: 1 as const, speed: 10.8, posOffset: 88 },
-      { type: 'motorcycle' as const, laneOffset: -1.4, dir: 1 as const, speed: 13.9, posOffset: -70 },
-      { type: 'motorcycle' as const, laneOffset: -2.7, dir: 1 as const, speed: 14.6, posOffset: 14 },
+      { type: 'rickshaw' as const, laneOffset: -5.75, dir: 1 as const, speed: 5.3, posOffset: -82 },
+      { type: 'rickshaw' as const, laneOffset: -5.45, dir: 1 as const, speed: 4.7, posOffset: -22 },
+      { type: 'rickshaw' as const, laneOffset: -5.85, dir: 1 as const, speed: 5.6, posOffset: 48 },
+      { type: 'truck' as const, laneOffset: -2.55, dir: 1 as const, speed: 6.8, posOffset: -52 },
+      { type: 'bus' as const, laneOffset: -2.65, dir: 1 as const, speed: 7.8, posOffset: 32 },
+      { type: 'car' as const, laneOffset: -2.1, dir: 1 as const, speed: 11.2, posOffset: -12 },
+      { type: 'car' as const, laneOffset: -2.2, dir: 1 as const, speed: 10.8, posOffset: 88 },
+      { type: 'motorcycle' as const, laneOffset: -1.65, dir: 1 as const, speed: 13.9, posOffset: -70 },
+      { type: 'motorcycle' as const, laneOffset: -4.45, dir: 1 as const, speed: 14.6, posOffset: 14 },
       { type: 'cng' as const, laneOffset: -1.9, dir: 1 as const, speed: 12.0, posOffset: -32 },
-      { type: 'leguna' as const, laneOffset: -3.3, dir: 1 as const, speed: 9.2, posOffset: 74 },
-      { type: 'rickshaw' as const, laneOffset: 5.2, dir: -1 as const, speed: 5.1, posOffset: -64 },
-      { type: 'rickshaw' as const, laneOffset: 4.9, dir: -1 as const, speed: 5.6, posOffset: 18 },
-      { type: 'rickshaw' as const, laneOffset: 5.3, dir: -1 as const, speed: 4.8, posOffset: 84 },
-      { type: 'truck' as const, laneOffset: 3.7, dir: -1 as const, speed: 6.7, posOffset: 52 },
-      { type: 'bus' as const, laneOffset: 3.8, dir: -1 as const, speed: 7.7, posOffset: -36 },
-      { type: 'car' as const, laneOffset: 2.2, dir: -1 as const, speed: 11.5, posOffset: -14 },
-      { type: 'motorcycle' as const, laneOffset: 1.5, dir: -1 as const, speed: 14.0, posOffset: 62 },
+      { type: 'leguna' as const, laneOffset: -2.4, dir: 1 as const, speed: 9.2, posOffset: 74 },
+      { type: 'rickshaw' as const, laneOffset: 5.75, dir: -1 as const, speed: 5.1, posOffset: -64 },
+      { type: 'rickshaw' as const, laneOffset: 5.45, dir: -1 as const, speed: 5.6, posOffset: 18 },
+      { type: 'rickshaw' as const, laneOffset: 5.85, dir: -1 as const, speed: 4.8, posOffset: 84 },
+      { type: 'truck' as const, laneOffset: 2.55, dir: -1 as const, speed: 6.7, posOffset: 52 },
+      { type: 'bus' as const, laneOffset: 2.65, dir: -1 as const, speed: 7.7, posOffset: -36 },
+      { type: 'car' as const, laneOffset: 2.1, dir: -1 as const, speed: 11.5, posOffset: -14 },
+      { type: 'motorcycle' as const, laneOffset: 1.65, dir: -1 as const, speed: 14.0, posOffset: 62 },
       { type: 'cng' as const, laneOffset: 1.9, dir: -1 as const, speed: 11.8, posOffset: 24 },
-      { type: 'leguna' as const, laneOffset: 3.3, dir: -1 as const, speed: 9.0, posOffset: -78 },
+      { type: 'leguna' as const, laneOffset: 2.4, dir: -1 as const, speed: 9.0, posOffset: -78 },
     ];
 
     const halfLengthByType: Record<TrafficVehicle['vehicleType'], number> = {
-      truck: 3.8,
-      bus: 4.9,
-      leguna: 2.8,
-      car: 2.25,
-      cng: 1.5,
-      rickshaw: 1.3,
-      motorcycle: 1.05,
+      truck: 3.2,
+      bus: 4.15,
+      leguna: 2.35,
+      car: 1.9,
+      cng: 1.25,
+      rickshaw: 1.1,
+      motorcycle: 0.9,
     };
 
     const buildVehicleMesh = (type: TrafficVehicle['vehicleType'], seed: number): THREE.Group => {
-      if (type === 'truck') return createDhakaTruckModel(this.textures, seed % 5);
-      if (type === 'bus') return createDhakaBusModel(this.textures);
-      if (type === 'leguna') return createLegunaModel(this.textures);
-      if (type === 'car') return createDhakaCarModel(this.textures, seed % 5);
-      if (type === 'motorcycle') return createDhakaMotorcycleModel(this.textures, seed % 4);
-      if (type === 'cng') return createCngModel(this.textures);
-      return createTrafficRickshawModel(this.textures, seed);
+      let raw: THREE.Group;
+      if (type === 'truck') raw = createDhakaTruckModel(this.textures, seed % 5);
+      else if (type === 'bus') raw = createDhakaBusModel(this.textures);
+      else if (type === 'leguna') raw = createLegunaModel(this.textures);
+      else if (type === 'car') raw = createDhakaCarModel(this.textures, seed % 5);
+      else if (type === 'motorcycle') raw = createDhakaMotorcycleModel(this.textures, seed % 4);
+      else if (type === 'cng') raw = createCngModel(this.textures);
+      else raw = createTrafficRickshawModel(this.textures, seed);
+
+      const batched = mergeStaticGroupByMaterial(raw, batchCache, false);
+      batched.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          (obj as THREE.Mesh).castShadow = false;
+        }
+      });
+      return batched;
     };
 
     zConfigs.forEach((cfg, i) => {
@@ -770,6 +874,7 @@ export class DhakaGameEngine {
         tiltRoll: 0,
         tiltPitch: 0,
         damageSmokeAcc: 0,
+        isGridlocked: false,
       });
     });
 
@@ -812,16 +917,17 @@ export class DhakaGameEngine {
         tiltRoll: 0,
         tiltPitch: 0,
         damageSmokeAcc: 0,
+        isGridlocked: false,
       });
     });
 
     // 5. Animated Diverse Dhaka NPCs (Gramin, Smart, City-Style, Murubbi, Feriwala, Borka) with Multi-State AI & Jaywalking
-    for (let i = 0; i < 52; i++) {
+    for (let i = 0; i < 36; i++) {
       const rig = createDiverseDhakaNpcModel(i, this.textures);
-      const isCrosser = i >= 40;
-      const axis: 'Z' | 'X' = isCrosser ? (i % 2 === 0 ? 'X' : 'Z') : i < 20 ? 'Z' : 'X';
+      const isCrosser = i >= 28;
+      const axis: 'Z' | 'X' = isCrosser ? (i % 2 === 0 ? 'X' : 'Z') : i < 14 ? 'Z' : 'X';
       const side: -1 | 1 = i % 2 === 0 ? -1 : 1;
-      const offset = -90 + (i % 16) * 12;
+      const offset = -90 + (i % 14) * 13.5;
       // Clear inner footpath lane between guardrails/poles (8.75..9.1m) and stalls (10.45m+)
       const laneLateral = 9.45 + (i % 3) * 0.25;
       const baseY = isCrosser ? 0.02 : 0.26;
@@ -880,9 +986,9 @@ export class DhakaGameEngine {
     }
 
     // Animated Circling Dhaka Crows & Colourful Sky Kites ("কাক ও রঙিন ঘুড়ি")
-    this.crows = createDhakaCrowFlock(14);
+    this.crows = createDhakaCrowFlock(8);
     this.crows.forEach((c) => this.scene.add(c.root));
-    this.kites = createDhakaKiteFlock(6);
+    this.kites = createDhakaKiteFlock(4);
     this.kites.forEach((k) => this.scene.add(k.root));
 
     // 6. Street Pickups (Biryani & Chai across N-S and E-W avenues)
@@ -943,6 +1049,32 @@ export class DhakaGameEngine {
       this.debrisInstanced.instanceColor.needsUpdate = true;
     }
     this.scene.add(this.debrisInstanced);
+
+    // 8. Reusable 3D Speech Bubble Sprite Pool (Bangla Scolding / Galagali over NPCs & Vehicles)
+    for (let i = 0; i < 10; i++) {
+      const mat = new THREE.SpriteMaterial({
+        map: this.textures.npcScoldBubbles[0],
+        transparent: true,
+        opacity: 1,
+        depthWrite: false,
+        depthTest: false,
+      });
+      const sprite = new THREE.Sprite(mat);
+      sprite.visible = false;
+      sprite.renderOrder = 25;
+      sprite.scale.set(2.8, 0.96, 1);
+      this.scene.add(sprite);
+      this.speechPool.push({
+        sprite,
+        active: false,
+        targetObj: null,
+        yOffset: 2.0,
+        life: 0,
+        maxLife: 2.8,
+        baseScaleX: 2.8,
+        baseScaleY: 0.96,
+      });
+    }
   }
 
   public setDriver(driverId: DriverId, playBellSound = true): void {
@@ -964,7 +1096,25 @@ export class DhakaGameEngine {
     this.cameraMode = mode;
   }
 
-  public applyWeather(weather: WeatherType): void {
+  public setAutoWeather(enabled: boolean): void {
+    this.autoWeather = enabled;
+    if (enabled) {
+      this.weatherChangeTimer = 30 + Math.random() * 14;
+      this.rollRandomWeather(this.phase === GamePhase.PLAYING);
+    } else {
+      this.emitHudSnapshot();
+    }
+  }
+
+  public rollRandomWeather(announce = true): void {
+    const options: WeatherType[] = ['SUNNY', 'CLOUDY', 'RAINY', 'GOLDEN'];
+    const pool = options.filter((w) => w !== this.weather);
+    const next = pool[Math.floor(Math.random() * pool.length)];
+    this.weatherChangeTimer = 34 + Math.random() * 16;
+    this.applyWeather(next, announce);
+  }
+
+  public applyWeather(weather: WeatherType, announce = false): void {
     this.weather = weather;
     if (weather === 'SUNNY') {
       this.scene.background = new THREE.Color(0xbce0fa);
@@ -996,6 +1146,7 @@ export class DhakaGameEngine {
         this.ambientMotesMat.color.setHex(0xfde68a);
         this.ambientMotesMat.opacity = 0.52;
       }
+      if (this.rainLines) this.rainLines.visible = false;
 
       if (this.cloudMat) {
         this.cloudMat.color.setHex(0xffffff);
@@ -1006,27 +1157,125 @@ export class DhakaGameEngine {
       }
       for (const cell of this.cells) {
         for (const am of cell.asphaltMats) {
-          am.roughness = 0.84;
-          am.metalness = 0.06;
+          am.color.setHex(am.map ? 0xffffff : 0x262d37);
+          am.roughness = 0.86;
+          am.metalness = 0.04;
+          am.envMapIntensity = 0.14;
+        }
+      }
+    } else if (weather === 'RAINY') {
+      // Dhaka Monsoon Rain (dark overcast clouds, dense rain streaks, rich dark wet asphalt)
+      this.scene.background = new THREE.Color(0x5b6c80);
+      (this.scene.fog as THREE.FogExp2).color.setHex(0x6c7d91);
+      (this.scene.fog as THREE.FogExp2).density = 0.0046;
+      this.renderer.toneMappingExposure = 0.94;
+      this.scene.environmentIntensity = 0.42;
+
+      this.hemiLight.color.setHex(0xb4c6da);
+      this.hemiLight.groundColor.setHex(0x283342);
+      this.hemiLight.intensity = 0.96;
+      this.sunLight.color.setHex(0xcbd5e1);
+      this.sunLight.intensity = 0.68;
+      this.sunOffset.set(14, 48, 10);
+      this.rimLight.color.setHex(0x94a3b8);
+      this.rimLight.intensity = 0.45;
+      this.rickshaw.headlightSpot.intensity = 0.75;
+      this.roadGrip = 0.76;
+
+      if (this.skyUniforms) {
+        this.skyUniforms.uZenithColor.value.setHex(0x283444);
+        this.skyUniforms.uMidColor.value.setHex(0x4d5e72);
+        this.skyUniforms.uHorizonColor.value.setHex(0x6e7f93);
+        this.skyUniforms.uSunDir.value.set(14, 48, 10).normalize();
+        this.skyUniforms.uSunGlow.value = 0.06;
+      }
+
+      if (this.ambientMotesMat) {
+        this.ambientMotesMat.color.setHex(0xe2e8f0);
+        this.ambientMotesMat.opacity = 0.4;
+      }
+      if (this.rainLines) this.rainLines.visible = true;
+
+      if (this.cloudMat) {
+        this.cloudMat.color.setHex(0x7c8ea3);
+        this.cloudMat.opacity = 0.94;
+      }
+      for (const c of this.clouds) {
+        c.mesh.visible = true;
+      }
+      for (const cell of this.cells) {
+        for (const am of cell.asphaltMats) {
+          am.color.setHex(am.map ? 0x8f9aa8 : 0x161b23);
+          am.roughness = 0.58;
+          am.metalness = 0.05;
+          am.envMapIntensity = 0.1;
+        }
+      }
+    } else if (weather === 'GOLDEN') {
+      // Dhaka Golden-Hour Bikel / Sunset glow
+      this.scene.background = new THREE.Color(0xf6be88);
+      (this.scene.fog as THREE.FogExp2).color.setHex(0xf1c295);
+      (this.scene.fog as THREE.FogExp2).density = 0.0023;
+      this.renderer.toneMappingExposure = 1.06;
+      this.scene.environmentIntensity = 0.72;
+
+      this.hemiLight.color.setHex(0xfde68a);
+      this.hemiLight.groundColor.setHex(0x785038);
+      this.hemiLight.intensity = 1.18;
+      this.sunLight.color.setHex(0xffb56b);
+      this.sunLight.intensity = 2.65;
+      this.sunOffset.set(42, 18, -28);
+      this.rimLight.color.setHex(0xfb923c);
+      this.rimLight.intensity = 0.72;
+      this.rickshaw.headlightSpot.intensity = 0.65;
+      this.roadGrip = 0.96;
+
+      if (this.skyUniforms) {
+        this.skyUniforms.uZenithColor.value.setHex(0x1e3a8a);
+        this.skyUniforms.uMidColor.value.setHex(0xd97706);
+        this.skyUniforms.uHorizonColor.value.setHex(0xfdba74);
+        this.skyUniforms.uSunDir.value.set(42, 18, -28).normalize();
+        this.skyUniforms.uSunGlow.value = 0.92;
+      }
+
+      if (this.ambientMotesMat) {
+        this.ambientMotesMat.color.setHex(0xfbbf24);
+        this.ambientMotesMat.opacity = 0.58;
+      }
+      if (this.rainLines) this.rainLines.visible = false;
+
+      if (this.cloudMat) {
+        this.cloudMat.color.setHex(0xfed7aa);
+        this.cloudMat.opacity = 0.78;
+      }
+      for (const c of this.clouds) {
+        c.mesh.visible = !c.overcastOnly;
+      }
+      for (const cell of this.cells) {
+        for (const am of cell.asphaltMats) {
+          am.color.setHex(am.map ? 0xf5ece2 : 0x262b33);
+          am.roughness = 0.82;
+          am.metalness = 0.05;
+          am.envMapIntensity = 0.14;
         }
       }
     } else {
-      // Monsoon overcast Cloudy Dhaka daylight (realistic diffused overcast + damp tarmac)
+      // Monsoon overcast Cloudy Dhaka daylight (realistic diffused overcast + dark damp tarmac)
       this.scene.background = new THREE.Color(0x95a5b8);
       (this.scene.fog as THREE.FogExp2).color.setHex(0xa6b5c6);
-      (this.scene.fog as THREE.FogExp2).density = 0.0033;
-      this.renderer.toneMappingExposure = 0.98;
-      this.scene.environmentIntensity = 0.6;
+      (this.scene.fog as THREE.FogExp2).density = 0.0031;
+      this.renderer.toneMappingExposure = 0.96;
+      this.scene.environmentIntensity = 0.48;
 
-      this.hemiLight.color.setHex(0xd6e0ea);
-      this.hemiLight.groundColor.setHex(0x4b5563);
-      this.hemiLight.intensity = 1.36;
+      this.hemiLight.color.setHex(0xcbd7e4);
+      this.hemiLight.groundColor.setHex(0x3f4957);
+      this.hemiLight.intensity = 1.08;
       this.sunLight.color.setHex(0xdbe4ef);
-      this.sunLight.intensity = 1.2;
+      this.sunLight.intensity = 1.05;
       this.sunOffset.set(16, 46, 12);
       this.rimLight.color.setHex(0x94a3b8);
-      this.rimLight.intensity = 0.44;
-      this.rickshaw.headlightSpot.intensity = 1.2;
+      this.rimLight.intensity = 0.4;
+      this.rickshaw.headlightSpot.intensity = 0.35;
       this.roadGrip = 0.9;
 
       if (this.skyUniforms) {
@@ -1039,8 +1288,9 @@ export class DhakaGameEngine {
 
       if (this.ambientMotesMat) {
         this.ambientMotesMat.color.setHex(0xdbeafe);
-        this.ambientMotesMat.opacity = 0.36;
+        this.ambientMotesMat.opacity = 0.34;
       }
+      if (this.rainLines) this.rainLines.visible = false;
 
       if (this.cloudMat) {
         this.cloudMat.color.setHex(0xc8d2de);
@@ -1051,17 +1301,27 @@ export class DhakaGameEngine {
       }
       for (const cell of this.cells) {
         for (const am of cell.asphaltMats) {
-          am.roughness = 0.52;
-          am.metalness = 0.14;
+          am.color.setHex(am.map ? 0xc2ccd8 : 0x1e242d);
+          am.roughness = 0.78;
+          am.metalness = 0.04;
+          am.envMapIntensity = 0.08;
         }
       }
     }
 
-    const bulbHex = weather === 'SUNNY' ? 0x94a3b8 : 0xfde68a;
+    const bulbHex =
+      weather === 'SUNNY' ? 0x94a3b8 : weather === 'RAINY' ? 0xfbbf24 : 0xfde68a;
     for (const cell of this.cells) {
       for (const bulb of cell.lampBulbs) {
         (bulb.material as THREE.MeshBasicMaterial).color.setHex(bulbHex);
       }
+    }
+
+    if (announce) {
+      const meta = WEATHER_LABELS_BN[weather];
+      const emoji =
+        weather === 'RAINY' ? '🌧️' : weather === 'GOLDEN' ? '🌇' : weather === 'CLOUDY' ? '☁️' : '☀️';
+      this.emitPopup(`${emoji} ঢাকার আবহাওয়া: ${meta.nameBn}`, meta.descBn, 'turbo');
     }
 
     this.emitHudSnapshot();
@@ -1077,6 +1337,9 @@ export class DhakaGameEngine {
       }
     }, 1800);
     this.resetWorldForRun();
+    if (this.autoWeather) {
+      this.rollRandomWeather(false);
+    }
     this.phase = GamePhase.PLAYING;
     this.callbacks.onPhaseChange(GamePhase.PLAYING);
     this.emitHudSnapshot();
@@ -1123,6 +1386,8 @@ export class DhakaGameEngine {
     this.distanceMeters = 0;
     this.bellCooldown = 0;
     this.turboTimer = 0;
+    this.invincibleTimer = 0;
+    this.jhalMuriTimer = 0;
     this.speedBumpCooldown = 0;
     this.lastPlayerGridX = 0;
     this.lastPlayerGridZ = 0;
@@ -1135,6 +1400,15 @@ export class DhakaGameEngine {
     this.activeNewsTimer = 0;
     this.newsCooldown = 0;
     this.lastChaseNewsAt = 0;
+    this.gridlockActive = false;
+    this.gridlockCooldown = 16;
+    this.gridlockTimer = 0;
+    this.gridlockHitCount = 0;
+    for (const slot of this.speechPool) {
+      slot.active = false;
+      slot.targetObj = null;
+      slot.sprite.visible = false;
+    }
 
     this.rickshaw.root.position.set(0, 0, 0);
     this.rickshaw.root.rotation.set(0, 0, 0);
@@ -1143,14 +1417,20 @@ export class DhakaGameEngine {
     this.rickshaw.steeringColumn.rotation.set(0, 0, 0);
     this.rickshaw.turboFlameL.visible = false;
     this.rickshaw.turboFlameR.visible = false;
+    this.rickshaw.invincibleAura.visible = false;
     this.cityGround.position.set(0, -0.02, 0);
     if (this.skyDome) {
       this.skyDome.position.set(0, 0, 0);
     }
     this.metroTrainZ = -58;
     if (this.metroTrain) {
-      this.metroTrain.position.set(2.0, 10.26, this.metroTrainZ);
+      this.metroTrain.position.set(2.0, 10.42, this.metroTrainZ);
       this.metroTrain.visible = true;
+    }
+    this.metroTrainBZ = 74;
+    if (this.metroTrainB) {
+      this.metroTrainB.position.set(-2.0, 10.42, this.metroTrainBZ);
+      this.metroTrainB.visible = true;
     }
 
     for (const m of this.mobs) {
@@ -1190,7 +1470,7 @@ export class DhakaGameEngine {
         cell.xCenter = gx * CELL_SIZE;
         cell.zCenter = gz * CELL_SIZE;
         cell.group.position.set(cell.xCenter, 0, cell.zCenter);
-        cell.metroGroup.visible = gx === 0;
+        this.syncCellLayout(cell);
         cell.crossingNameBn = this.getCrossingName(gx, gz);
         cell.playerViolated = false;
         cell.playerRewarded = false;
@@ -1200,6 +1480,10 @@ export class DhakaGameEngine {
         }
         for (const os of cell.openShops) {
           os.cooldown = 0;
+        }
+        for (const vk of cell.vendorKiosks) {
+          vk.cooldown = 0;
+          vk.beaconGroup.visible = true;
         }
       }
     }
@@ -1227,6 +1511,7 @@ export class DhakaGameEngine {
       tr.tiltRoll = 0;
       tr.tiltPitch = 0;
       tr.damageSmokeAcc = 0;
+      tr.isGridlocked = false;
       tr.mesh.visible = true;
       tr.mesh.scale.setScalar(1);
 
@@ -1291,6 +1576,7 @@ export class DhakaGameEngine {
     const rz = this.rickshaw.root.position.z;
 
     for (const mob of this.mobs) {
+      if (mob.injuredLeaving) continue;
       const dx = mob.rig.root.position.x - rx;
       const dz = mob.rig.root.position.z - rz;
       const dist = Math.hypot(dx, dz);
@@ -1301,10 +1587,14 @@ export class DhakaGameEngine {
         mob.stunTimer = 2.0;
         mob.fallenTimer = 1.9;
         mob.velY = 3.2;
+        if (stunnedCount < 2) {
+          this.spawnScoldBubble(mob.rig.root, false, 1.55);
+        }
         stunnedCount++;
       }
     }
 
+    let pedScoldCount = 0;
     for (const ped of this.pedestrians) {
       const dx = ped.rig.root.position.x - rx;
       const dz = ped.rig.root.position.z - rz;
@@ -1316,7 +1606,51 @@ export class DhakaGameEngine {
         ped.scatterX = dx * inv;
         ped.scatterZ = dz * inv;
         ped.rig.direction = Math.sign((ped.axis === 'Z' ? dz : dx) || 1);
+        if (pedScoldCount < 2) {
+          this.spawnScoldBubble(ped.rig.root, false, 2.05);
+          pedScoldCount++;
+        }
       }
+    }
+
+    // Clear stuck traffic / gridlocked vehicles out toward curbs with Bell Shockwave!
+    let clearedVehCount = 0;
+    const vehBellRadius = this.shockwaveMaxRadius * 1.55;
+    for (const tr of this.traffic) {
+      if (tr.wrecked) continue;
+      const dx = tr.mesh.position.x - rx;
+      const dz = tr.mesh.position.z - rz;
+      const dist = Math.hypot(dx, dz);
+      if (dist < vehBellRadius) {
+        if (tr.isGridlocked || tr.currentSpeed < 4.5 || tr.stoppedAtLight) {
+          const relToPlayer = tr.axis === 'Z' ? tr.mesh.position.x - rx : tr.mesh.position.z - rz;
+          const awaySign = relToPlayer >= 0 ? 1 : -1;
+          const pushOffset =
+            awaySign > 0
+              ? Math.max(tr.laneOffset + 2.5, 5.2)
+              : Math.min(tr.laneOffset - 2.5, -5.2);
+          tr.targetLaneOffset = THREE.MathUtils.clamp(pushOffset, -5.45, 5.45);
+          tr.avoidTimer = 6.0;
+          if (clearedVehCount < 2) {
+            this.spawnScoldBubble(
+              tr.mesh,
+              true,
+              tr.isBus || tr.isTruck ? 3.5 : 2.3,
+              tr.isGridlocked ? 6 : 1
+            );
+          }
+          clearedVehCount++;
+        }
+      }
+    }
+
+    if (clearedVehCount > 0 && this.gridlockActive) {
+      soundEngine.playTrafficHorn(true);
+      this.emitPopup(
+        '🔔 বেল শকওয়েভ! গাড়ি সাইড দিচ্ছে!',
+        `${clearedVehCount}টি গাড়ি রাস্তা ছেড়ে সরে যাচ্ছে — ফাঁকা গলি দিয়ে টানুন!`,
+        'bell'
+      );
     }
 
     if (stunnedCount > 0) {
@@ -1352,45 +1686,10 @@ export class DhakaGameEngine {
       soundEngine.playWantedUp(this.wantedLevel);
       this.emitPopup(
         `ওয়ান্টেড লেভেল ${this.wantedLevel} ★`,
-        'আরও বেশি ক্ষিপ্ত জনতা ধাওয়া করছে!',
+        'ট্রাফিক ও দোকানদাররা সতর্ক হয়ে উঠেছে!',
         'warning'
       );
-
-      const targetMobTotal = [0, 4, 8, 12, 16, 20][this.wantedLevel];
-      while (this.mobs.length < targetMobTotal) {
-        this.spawnCrowdChaser(this.mobs.length);
-      }
     }
-  }
-
-  private spawnCrowdChaser(seed: number): void {
-    const rig = createMobModel(seed, this.textures);
-    const rx = this.rickshaw.root.position.x;
-    const rz = this.rickshaw.root.position.z;
-    const aveX = Math.round(rx / CELL_SIZE) * CELL_SIZE;
-    const aveZ = Math.round(rz / CELL_SIZE) * CELL_SIZE;
-    const flank = seed % 2 === 0 ? -1 : 1;
-
-    // Spawn on whichever corridor player is closest to
-    if (Math.abs(rx - aveX) <= Math.abs(rz - aveZ)) {
-      const zOff = seed % 3 === 0 ? 18 + (seed % 4) * 5 : -26 - (seed % 5) * 5;
-      rig.root.position.set(aveX + flank * (5.2 + (seed % 3) * 0.6), 0, rz + zOff);
-    } else {
-      const xOff = seed % 3 === 0 ? 18 + (seed % 4) * 5 : -26 - (seed % 5) * 5;
-      rig.root.position.set(rx + xOff, 0, aveZ + flank * (5.2 + (seed % 3) * 0.6));
-    }
-
-    this.scene.add(rig.root);
-    this.mobs.push({
-      rig,
-      stunTimer: 0,
-      fallenTimer: 0,
-      posY: 0,
-      velY: 0,
-      fallTiltX: 0,
-      knockVelX: 0,
-      knockVelZ: 0,
-    });
   }
 
   private triggerBreakingNews(
@@ -1419,65 +1718,62 @@ export class DhakaGameEngine {
   }
 
   /**
-   * Immediately spawns angry shopkeepers/locals around ANY smashed stall anywhere in Dhaka
+   * Exclusively spawns ONLY the single owner of the smashed stall (in randomized dress) to chase!
+   * No unrelated bystanders or random crowds are spawned.
    */
-  private spawnStallAngryMobs(sx: number, sz: number, isVeggie: boolean): void {
-    const count = isVeggie ? 3 : 2;
+  private spawnStallAngryMobs(sx: number, sz: number, _isVeggie: boolean): void {
     const rx = this.rickshaw.root.position.x;
     const rz = this.rickshaw.root.position.z;
     const relX = wrapCellLocal(sx);
     const relZ = wrapCellLocal(sz);
-    const roadNudgeX = Math.abs(relX) < 12 ? -Math.sign(relX || 1) * 1.6 : 0;
-    const roadNudgeZ = Math.abs(relZ) < 12 ? -Math.sign(relZ || 1) * 1.6 : 0;
+    const roadNudgeX = Math.abs(relX) < 12 ? -Math.sign(relX || 1) * 1.5 : 0;
+    const roadNudgeZ = Math.abs(relZ) < 12 ? -Math.sign(relZ || 1) * 1.5 : 0;
 
-    for (let k = 0; k < count; k++) {
-      const spawnX = sx + roadNudgeX + (k - 0.5) * 1.4;
-      const spawnZ = sz + roadNudgeZ + (k % 2 === 0 ? -1.1 : 1.1);
+    const spawnX = sx + roadNudgeX;
+    const spawnZ = sz + roadNudgeZ;
 
-      if (this.mobs.length < 26) {
-        const rig = createMobModel(this.stallsSmashed * 5 + k, this.textures);
-        rig.root.position.set(spawnX, 0, spawnZ);
-        this.scene.add(rig.root);
-        this.mobs.push({
-          rig,
-          stunTimer: 0,
-          fallenTimer: 0,
-          posY: 0,
-          velY: 0,
-          fallTiltX: 0,
-          knockVelX: 0,
-          knockVelZ: 0,
-        });
-      } else {
-        // Recycle the farthest active mob to surge from this freshly smashed stall
-        let farthestIdx = 0;
-        let maxDist = -1;
-        for (let i = 0; i < this.mobs.length; i++) {
-          const p = this.mobs[i].rig.root.position;
-          const d = (p.x - rx) * (p.x - rx) + (p.z - rz) * (p.z - rz);
-          if (d > maxDist) {
-            maxDist = d;
-            farthestIdx = i;
-          }
+    // Keep active stall-owner list tidy by removing the farthest one if > 6 accumulate
+    if (this.mobs.length >= 6) {
+      let farthestIdx = 0;
+      let maxDist = -1;
+      for (let i = 0; i < this.mobs.length; i++) {
+        const p = this.mobs[i].rig.root.position;
+        const d = (p.x - rx) * (p.x - rx) + (p.z - rz) * (p.z - rz);
+        if (d > maxDist) {
+          maxDist = d;
+          farthestIdx = i;
         }
-        const m = this.mobs[farthestIdx];
-        m.rig.root.position.set(spawnX, 0, spawnZ);
-        m.stunTimer = 0;
-        m.fallenTimer = 0;
-        m.posY = 0;
-        m.velY = 0;
-        m.fallTiltX = 0;
-        m.rig.root.rotation.set(0, 0, 0);
-        m.knockVelX = 0;
-        m.knockVelZ = 0;
       }
+      this.scene.remove(this.mobs[farthestIdx].rig.root);
+      this.mobs.splice(farthestIdx, 1);
     }
+
+    const randomDressSeed = Math.floor(Math.random() * 100000) + this.stallsSmashed * 97;
+    const rig = createMobModel(randomDressSeed, this.textures);
+    rig.root.position.set(spawnX, 0, spawnZ);
+    rig.root.lookAt(rx, 0, rz);
+    this.scene.add(rig.root);
+    this.mobs.push({
+      rig,
+      stunTimer: 0,
+      fallenTimer: 0,
+      posY: 0,
+      velY: 0,
+      fallTiltX: 0,
+      knockVelX: 0,
+      knockVelZ: 0,
+      injuredLeaving: false,
+      leaveTimer: 0,
+      leaveDirX: 0,
+      leaveDirZ: 0,
+    });
+    this.spawnScoldBubble(rig.root, false, 1.55);
 
     const driverName = DRIVER_PROFILES[this.selectedDriverId].nameBn;
     this.triggerBreakingNews(
       'MOB_CHASE',
-      `দোকান ভেঙে পালানোয় ক্ষিপ্ত জনতার ধাওয়া!`,
-      `${driverName}-কে ঘেরাও করতে ছুটছে বিক্ষুব্ধ দোকানদার ও পথচারীরা · পরিস্থিতি উত্তপ্ত`,
+      `দোকান ভেঙে দেওয়ায় ক্ষিপ্ত দোকানদার পিছু ধাওয়া করছে!`,
+      `দোকানের মালিক লাঠি হাতে ${driverName}-কে তাড়া করেছেন · ধাক্কা দিয়ে বা স্পিড বাড়িয়ে পালান!`,
       false
     );
   }
@@ -1679,6 +1975,7 @@ export class DhakaGameEngine {
     if (this.phase !== GamePhase.PAUSED) {
       this.updateClouds(dt, px, pz);
       this.updateAmbientMotes(dt, px, pz);
+      this.updateRain(dt, px, pz);
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -1701,8 +1998,8 @@ export class DhakaGameEngine {
     if (!this.ambientMotes) return;
     this.ambientMotes.position.set(rx, 0, rz);
     const arr = this.ambientMotesPos;
-    const breezeX = this.weather === 'CLOUDY' ? 1.8 : 0.65;
-    const fallY = this.weather === 'CLOUDY' ? -0.9 : -0.22;
+    const breezeX = this.weather === 'RAINY' ? 3.2 : this.weather === 'CLOUDY' ? 1.8 : 0.65;
+    const fallY = this.weather === 'RAINY' ? -3.4 : this.weather === 'CLOUDY' ? -0.9 : -0.22;
     for (let i = 0; i < this.moteCount; i++) {
       const idx = i * 3;
       arr[idx] += breezeX * dt;
@@ -1711,6 +2008,30 @@ export class DhakaGameEngine {
       if (arr[idx + 1] < 0.4) arr[idx + 1] = 14.5;
     }
     (this.ambientMotes.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+  }
+
+  private updateRain(dt: number, rx: number, rz: number): void {
+    if (!this.rainLines || !this.rainLines.visible) return;
+    this.rainLines.position.set(rx, 0, rz);
+    const arr = this.rainPos;
+    const fallStep = -26.5 * dt;
+    const windStep = -4.0 * dt;
+    for (let i = 0; i < this.rainCount; i++) {
+      const b = i * 6;
+      arr[b] += windStep;
+      arr[b + 1] += fallStep;
+      arr[b + 3] += windStep;
+      arr[b + 4] += fallStep;
+      if (arr[b + 1] < 0.25) {
+        const nx = (Math.random() - 0.5) * 52;
+        const ny = 14.5 + Math.random() * 3.5;
+        arr[b] = nx;
+        arr[b + 1] = ny;
+        arr[b + 3] = nx - 0.14;
+        arr[b + 4] = ny - 0.92;
+      }
+    }
+    (this.rainLines.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
   }
 
   private updateMenuShowcase(dt: number, elapsed: number): void {
@@ -1738,20 +2059,35 @@ export class DhakaGameEngine {
   }
 
   private updateMetroTrain(dt: number): void {
-    if (!this.metroTrain) return;
     const rx = this.rickshaw.root.position.x;
     const rz = this.rickshaw.root.position.z;
     const nearMetroCorridor = Math.abs(rx) < 220;
-    this.metroTrain.visible = nearMetroCorridor;
-    if (!nearMetroCorridor) return;
 
-    this.metroTrainZ -= 24.5 * dt;
-    if (this.metroTrainZ - rz < -230) {
-      this.metroTrainZ = rz + 230;
-    } else if (this.metroTrainZ - rz > 235) {
-      this.metroTrainZ = rz - 230;
+    if (this.metroTrain) {
+      this.metroTrain.visible = nearMetroCorridor;
+      if (nearMetroCorridor) {
+        this.metroTrainZ -= 24.5 * dt;
+        if (this.metroTrainZ - rz < -230) {
+          this.metroTrainZ = rz + 230;
+        } else if (this.metroTrainZ - rz > 235) {
+          this.metroTrainZ = rz - 230;
+        }
+        this.metroTrain.position.set(2.0, 10.42, this.metroTrainZ);
+      }
     }
-    this.metroTrain.position.set(2.0, 10.26, this.metroTrainZ);
+
+    if (this.metroTrainB) {
+      this.metroTrainB.visible = nearMetroCorridor;
+      if (nearMetroCorridor) {
+        this.metroTrainBZ += 24.5 * dt;
+        if (this.metroTrainBZ - rz > 230) {
+          this.metroTrainBZ = rz - 230;
+        } else if (this.metroTrainBZ - rz < -235) {
+          this.metroTrainBZ = rz + 230;
+        }
+        this.metroTrainB.position.set(-2.0, 10.42, this.metroTrainBZ);
+      }
+    }
   }
 
   private updatePlaying(dt: number, elapsed: number): void {
@@ -1781,11 +2117,23 @@ export class DhakaGameEngine {
     if (this.turboTimer > 0) {
       this.turboTimer = Math.max(0, this.turboTimer - dt);
     }
+    if (this.invincibleTimer > 0) {
+      this.invincibleTimer = Math.max(0, this.invincibleTimer - dt);
+    }
+    if (this.jhalMuriTimer > 0) {
+      this.jhalMuriTimer = Math.max(0, this.jhalMuriTimer - dt);
+    }
     if (this.comboTimer > 0) {
       this.comboTimer -= dt;
       if (this.comboTimer <= 0) {
         this.combo = 0;
         this.comboTimer = 0;
+      }
+    }
+    if (this.autoWeather) {
+      this.weatherChangeTimer -= dt;
+      if (this.weatherChangeTimer <= 0) {
+        this.rollRandomWeather(true);
       }
     }
     if (this.bellJiggleTimer > 0) {
@@ -1796,19 +2144,29 @@ export class DhakaGameEngine {
     }
 
     const isTurbo = this.turboTimer > 0;
-    this.rickshaw.turboFlameL.visible = isTurbo;
-    this.rickshaw.turboFlameR.visible = isTurbo;
-    if (isTurbo) {
+    const isJhalMuri = this.jhalMuriTimer > 0;
+    const isInvincible = this.invincibleTimer > 0;
+    const hasFlameBoost = isTurbo || isJhalMuri;
+    this.rickshaw.turboFlameL.visible = hasFlameBoost;
+    this.rickshaw.turboFlameR.visible = hasFlameBoost;
+    if (hasFlameBoost) {
       const flicker = 0.8 + Math.sin(elapsed * 45) * 0.28;
       this.rickshaw.turboFlameL.scale.set(1, 1, flicker);
       this.rickshaw.turboFlameR.scale.set(1, 1, flicker);
     }
 
+    this.rickshaw.invincibleAura.visible = isInvincible;
+    if (isInvincible) {
+      this.rickshaw.invincibleAura.rotation.y = elapsed * 1.6;
+      const auraMat = this.rickshaw.invincibleAura.material as THREE.MeshBasicMaterial;
+      auraMat.opacity = 0.2 + Math.sin(elapsed * 8.0) * 0.08;
+    }
+
     // Upgraded 2D Driving & Grip Physics (torque taper, aerodynamic drag, tire slip, weight transfer & suspension bounce)
-    const maxForwardSpeed = (isTurbo ? 33.5 : 24.5) * profile.topSpeedBonus;
+    const maxForwardSpeed = (isTurbo ? 33.5 : isJhalMuri ? 31.8 : 24.5) * profile.topSpeedBonus;
     const maxReverseSpeed = -7.8;
     const speedRatio = Math.min(Math.abs(this.speed) / maxForwardSpeed, 1.0);
-    const launchTorque = (isTurbo ? 34 : 21.5) * (1.18 - speedRatio * 0.48);
+    const launchTorque = (isTurbo ? 34 : isJhalMuri ? 31.5 : 21.5) * (1.18 - speedRatio * 0.48);
 
     let targetPitch = 0;
     if (this.input.forward) {
@@ -1904,25 +2262,58 @@ export class DhakaGameEngine {
       }
     }
 
-    // Dhaka Speed Breaker ("স্পিড ব্রেকার") + Center Median Planter Curb bump
-    const hitCenterMedian =
-      (Math.abs(relX) < 0.52 && (Math.abs(Math.abs(relZ) - 22.5) < 4.25 || Math.abs(Math.abs(relZ) - 38.0) < 4.25)) ||
-      (Math.abs(relZ) < 0.52 && (Math.abs(Math.abs(relX) - 22.5) < 4.25 || Math.abs(Math.abs(relX) - 38.0) < 4.25));
-    if (
+    // Physical Center Concrete Road Divider & Real MRT-6 Pier Plinth Deflection (Sparse U-Turn Bays open ONLY when active on +28.3m arm!)
+    const absRelX = Math.abs(relX);
+    const absRelZ = Math.abs(relZ);
+    const gridX = Math.round(rx / CELL_SIZE);
+    const gridZ = Math.round(rz / CELL_SIZE);
+
+    const onNsArmHasUTurn = relZ > 0 && hasNsUTurnBay(gridX, gridZ);
+    const onEwArmHasUTurn = relX > 0 && hasEwUTurnBay(gridX, gridZ);
+    const onNsDividerSpan = onNsArmHasUTurn
+      ? (absRelZ >= 13.8 && absRelZ <= 23.9) || (absRelZ >= 32.7 && absRelZ <= 46.7)
+      : absRelZ >= 13.8 && absRelZ <= 46.7;
+    const onEwDividerSpan = onEwArmHasUTurn
+      ? (absRelX >= 13.8 && absRelX <= 23.9) || (absRelX >= 32.7 && absRelX <= 46.7)
+      : absRelX >= 13.8 && absRelX <= 46.7;
+    const onMetroPierPlinth =
+      gridX === 0 && (Math.abs(absRelZ - 19.0) < 1.25 || Math.abs(absRelZ - 40.5) < 1.25);
+
+    const nsBarrierHalf = onMetroPierPlinth ? 1.04 : 0.64;
+    const ewBarrierHalf = 0.64;
+
+    let hitCenterMedian = false;
+    if (onNsDividerSpan && absRelX < nsBarrierHalf) {
+      hitCenterMedian = true;
+      this.rickshaw.root.position.x = cellCenterX + (relX >= 0 ? nsBarrierHalf : -nsBarrierHalf);
+      this.lateralVel *= -0.42;
+    } else if (onEwDividerSpan && absRelZ < ewBarrierHalf) {
+      hitCenterMedian = true;
+      this.rickshaw.root.position.z = cellCenterZ + (relZ >= 0 ? ewBarrierHalf : -ewBarrierHalf);
+      this.lateralVel *= -0.42;
+    }
+
+    if (hitCenterMedian && Math.abs(this.speed) > 4.5 && this.speedBumpCooldown <= 0) {
+      this.speedBumpCooldown = 0.36;
+      this.speed *= 0.86;
+      this.bounceVel += 1.65;
+      this.cameraShake = Math.max(this.cameraShake, 0.16);
+      if (Math.abs(this.speed) > 8.5) {
+        soundEngine.playHit();
+        this.spawnDebrisBurst(this.rickshaw.root.position.x, 0.45, this.rickshaw.root.position.z, 4);
+      }
+    } else if (
       this.speedBumpCooldown <= 0 &&
       Math.abs(this.speed) > 4.0 &&
-      (hitCenterMedian ||
-        (Math.abs(relX) < ROAD_HALF_DRIVABLE && Math.abs(Math.abs(relZ) - 16.8) < 0.7) ||
-        (Math.abs(relZ) < ROAD_HALF_DRIVABLE && Math.abs(Math.abs(relX) - 16.8) < 0.7))
+      ((absRelX < ROAD_HALF_DRIVABLE && Math.abs(absRelZ - 16.8) < 0.7) ||
+        (absRelZ < ROAD_HALF_DRIVABLE && Math.abs(absRelX - 16.8) < 0.7))
     ) {
-      this.speedBumpCooldown = hitCenterMedian ? 0.35 : 0.55;
+      this.speedBumpCooldown = 0.55;
       this.bounceVel += Math.min(2.6, Math.abs(this.speed) * 0.14);
-      this.cameraShake = Math.max(this.cameraShake, hitCenterMedian ? 0.12 : 0.08);
+      this.cameraShake = Math.max(this.cameraShake, 0.08);
     }
 
     // District Transition Banner when entering a new 96m super-cell
-    const gridX = Math.round(rx / CELL_SIZE);
-    const gridZ = Math.round(rz / CELL_SIZE);
     if (gridX !== this.lastPlayerGridX || gridZ !== this.lastPlayerGridZ) {
       this.lastPlayerGridX = gridX;
       this.lastPlayerGridZ = gridZ;
@@ -1956,7 +2347,7 @@ export class DhakaGameEngine {
     this.rickshaw.chassisTilt.rotation.x = this.pitchAngle;
     this.rickshaw.chassisTilt.position.y = Math.max(0, roadBump + this.bounceHeight);
 
-    const wheelDelta = fwdStep / 0.44;
+    const wheelDelta = fwdStep / 0.334;
     this.wheelSpin -= wheelDelta;
     this.rickshaw.frontWheel.rotation.x = this.wheelSpin;
     this.rickshaw.rearWheelL.rotation.x = this.wheelSpin;
@@ -1973,22 +2364,40 @@ export class DhakaGameEngine {
     this.recycleWorldCells();
     this.updateMetroTrain(dt);
     this.updateIntersections(dt, true);
+    this.updateGridlockEvent(dt);
     this.checkStallCollisions();
     this.updateOpenShops(dt);
+    this.updateVendorKiosks(dt, elapsed);
     this.updatePickups(dt, elapsed);
     this.updateTraffic(dt, true);
     this.updatePedestrians(dt, elapsed, true);
     this.updateCrows(elapsed);
     this.updateCrowdMobs(dt, elapsed);
+    this.updateSpeechBubbles(dt);
     this.updateShockwave(dt);
     this.updateDebris(dt);
     this.updateGameplayCamera(dt);
 
     this.hudEmitAccumulator += dt;
-    if (this.hudEmitAccumulator >= 0.065) {
+    if (this.hudEmitAccumulator >= 0.11) {
       this.hudEmitAccumulator = 0;
       this.emitHudSnapshot();
     }
+  }
+
+  private syncCellLayout(cell: CityCell): void {
+    const hasSignal = isSignalIntersection(cell.gridX, cell.gridZ);
+    const hasNsUTurn = hasNsUTurnBay(cell.gridX, cell.gridZ);
+    const hasEwUTurn = hasEwUTurnBay(cell.gridX, cell.gridZ);
+    cell.hasSignal = hasSignal;
+    cell.hasNsUTurn = hasNsUTurn;
+    cell.hasEwUTurn = hasEwUTurn;
+    cell.metroGroup.visible = cell.gridX === 0;
+    cell.signalGroup.visible = hasSignal;
+    cell.nsMedianSolid.visible = !hasNsUTurn;
+    cell.nsMedianUTurn.visible = hasNsUTurn;
+    cell.ewMedianSolid.visible = !hasEwUTurn;
+    cell.ewMedianUTurn.visible = hasEwUTurn;
   }
 
   private recycleWorldCells(): void {
@@ -2020,7 +2429,7 @@ export class DhakaGameEngine {
 
       if (moved) {
         cell.group.position.set(cell.xCenter, 0, cell.zCenter);
-        cell.metroGroup.visible = cell.gridX === 0;
+        this.syncCellLayout(cell);
         cell.crossingNameBn = this.getCrossingName(cell.gridX, cell.gridZ);
         cell.playerViolated = false;
         cell.playerRewarded = false;
@@ -2030,6 +2439,10 @@ export class DhakaGameEngine {
         }
         for (const os of cell.openShops) {
           os.cooldown = 0;
+        }
+        for (const vk of cell.vendorKiosks) {
+          vk.cooldown = 0;
+          vk.beaconGroup.visible = true;
         }
       }
     }
@@ -2046,6 +2459,7 @@ export class DhakaGameEngine {
     let activeHudInfo: TrafficSignalHudInfo | undefined;
 
     for (const cell of this.cells) {
+      if (!cell.hasSignal) continue;
       cell.timer -= dt;
       if (cell.timer <= 0) {
         if (cell.state === 'RED') {
@@ -2259,6 +2673,64 @@ export class DhakaGameEngine {
     }
   }
 
+  private updateVendorKiosks(dt: number, elapsed: number): void {
+    const rx = this.rickshaw.root.position.x;
+    const rz = this.rickshaw.root.position.z;
+
+    for (const cell of this.cells) {
+      const cellNear =
+        Math.abs(cell.xCenter - rx) <= 135 && Math.abs(cell.zCenter - rz) <= 135;
+
+      for (const vk of cell.vendorKiosks) {
+        if (vk.cooldown > 0) {
+          vk.cooldown = Math.max(0, vk.cooldown - dt);
+        }
+
+        const isReady = vk.cooldown <= 0;
+        vk.beaconGroup.visible = isReady && cellNear;
+
+        if (!isReady || !cellNear) continue;
+
+        vk.floatingGem.rotation.y = elapsed * 2.5;
+        vk.floatingGem.position.y = 3.82 + Math.sin(elapsed * 3.8) * 0.16;
+
+        const kx = cell.xCenter + vk.localX;
+        const kz = cell.zCenter + vk.localZ;
+        const dx = rx - kx;
+        const dz = rz - kz;
+
+        // Close-pass trigger along curb shoulder (~6.9m from booth center, triggers seamlessly at any speed!)
+        if (dx * dx + dz * dz < 48) {
+          vk.cooldown = 18.0;
+          vk.beaconGroup.visible = false;
+
+          if (vk.kind === 'chai_break') {
+            this.invincibleTimer = INVINCIBLE_DURATION_SEC;
+            this.health = Math.min(100, this.health + 10);
+            soundEngine.playPickup('heal');
+            this.emitPopup(
+              '☕ চা-ব্রেক! ইনভিন্সিবল শিল্ড অন!',
+              '৬ সেকেন্ড কোনো ধাক্কায় ড্যামেজ হবে না (+১০ হেলথ)',
+              'heal'
+            );
+          } else {
+            this.jhalMuriTimer = JHAL_MURI_DURATION_SEC;
+            if (this.speed >= 0) {
+              this.speed = Math.max(this.speed, 27.5);
+            }
+            soundEngine.playPickup('turbo');
+            this.emitPopup(
+              '🌶️ মামার ঝালমুড়ি স্পিড বুস্ট!',
+              '৪.৫ সেকেন্ড সুপার স্পিড — রাস্তা কাঁপিয়ে দিন!',
+              'turbo'
+            );
+          }
+          this.emitHudSnapshot();
+        }
+      }
+    }
+  }
+
   private updatePickups(dt: number, elapsed: number): void {
     const rx = this.rickshaw.root.position.x;
     const rz = this.rickshaw.root.position.z;
@@ -2327,6 +2799,7 @@ export class DhakaGameEngine {
     tr.tiltRoll = 0;
     tr.tiltPitch = 0;
     tr.damageSmokeAcc = 0;
+    tr.isGridlocked = false;
     tr.nearMissAwarded = false;
     tr.hitCooldown = 0;
     tr.avoidTimer = 0;
@@ -2346,6 +2819,248 @@ export class DhakaGameEngine {
       tr.aveBase = nearestAveZ;
       tr.mesh.position.set(rx + (tr.direction === 1 ? -165 : 165), 0, tr.aveBase + tr.laneOffset);
       tr.mesh.rotation.set(0, tr.direction === 1 ? -Math.PI / 2 : Math.PI / 2, 0);
+    }
+  }
+
+  private spawnScoldBubble(
+    targetObj: THREE.Object3D,
+    isVehicle: boolean,
+    yOffset: number,
+    forcedIndex?: number
+  ): void {
+    const texList = isVehicle ? this.textures.vehicleScoldBubbles : this.textures.npcScoldBubbles;
+    if (!texList || texList.length === 0 || this.speechPool.length === 0) return;
+
+    const texIdx =
+      forcedIndex !== undefined
+        ? Math.abs(forcedIndex) % texList.length
+        : Math.floor(Math.random() * texList.length);
+    const chosenTex = texList[texIdx];
+
+    // If this exact NPC or vehicle already has a bubble showing, avoid interrupting pop-in animation
+    for (const slot of this.speechPool) {
+      if (slot.active && slot.targetObj === targetObj) {
+        if (slot.life > 0.65) {
+          const mat = slot.sprite.material as THREE.SpriteMaterial;
+          mat.map = chosenTex;
+          mat.opacity = 1;
+          slot.life = 0.2;
+          slot.yOffset = yOffset;
+        }
+        return;
+      }
+    }
+
+    let picked = this.speechPool.find((s) => !s.active);
+    if (!picked) {
+      // Recycle oldest active bubble slot
+      picked = this.speechPool.reduce((oldest, cur) => (cur.life > oldest.life ? cur : oldest));
+    }
+
+    const mat = picked.sprite.material as THREE.SpriteMaterial;
+    mat.map = chosenTex;
+    mat.opacity = 1;
+    picked.active = true;
+    picked.targetObj = targetObj;
+    picked.yOffset = yOffset;
+    picked.life = 0;
+    picked.maxLife = isVehicle ? 3.2 : 2.9;
+    picked.baseScaleX = isVehicle ? 3.35 : 2.75;
+    picked.baseScaleY = isVehicle ? 1.15 : 0.94;
+    picked.sprite.visible = true;
+    picked.sprite.position.set(
+      targetObj.position.x,
+      targetObj.position.y + yOffset,
+      targetObj.position.z
+    );
+  }
+
+  private updateSpeechBubbles(dt: number): void {
+    for (let i = 0; i < this.speechPool.length; i++) {
+      const slot = this.speechPool[i];
+      if (!slot.active || !slot.targetObj) continue;
+
+      slot.life += dt;
+      if (slot.life >= slot.maxLife) {
+        slot.active = false;
+        slot.targetObj = null;
+        slot.sprite.visible = false;
+        continue;
+      }
+
+      const t = slot.life / slot.maxLife;
+      const popIn = slot.life < 0.18 ? 0.55 + (slot.life / 0.18) * 0.52 : 1.0;
+      const spring = slot.life < 0.32 ? 1 + Math.sin((slot.life / 0.32) * Math.PI) * 0.08 : 1.0;
+      const fadeOut = t > 0.72 ? Math.max(0, 1 - (t - 0.72) / 0.28) : 1.0;
+      const floatUp = t * 0.38;
+
+      slot.sprite.position.set(
+        slot.targetObj.position.x,
+        slot.targetObj.position.y + slot.yOffset + floatUp,
+        slot.targetObj.position.z
+      );
+      slot.sprite.scale.set(
+        slot.baseScaleX * popIn * spring,
+        slot.baseScaleY * popIn * spring,
+        1
+      );
+      (slot.sprite.material as THREE.SpriteMaterial).opacity = fadeOut;
+    }
+  }
+
+  private clearGridlock(awarded: boolean): void {
+    for (const tr of this.traffic) {
+      if (tr.isGridlocked) {
+        tr.isGridlocked = false;
+        tr.avoidTimer = 0;
+        tr.targetLaneOffset = tr.baseLaneOffset;
+      }
+    }
+    this.gridlockActive = false;
+    this.gridlockCooldown = 34 + Math.random() * 14;
+    this.gridlockTimer = 0;
+
+    if (awarded) {
+      const bonus = this.gridlockHitCount === 0 ? 4500 : 3000;
+      this.addMoney(bonus);
+      soundEngine.playTrafficComplianceChime();
+      this.emitPopup(
+        `🛣️ জ্যাম কাটিয়ে ওস্তাদ! +৳${bonus.toLocaleString('en-IN')}`,
+        this.gridlockHitCount === 0
+          ? 'নিখুঁত বেল ও কাটিং স্কিলে নো-ড্যামেজ বোনাস!'
+          : 'যানজট ভেদ করে এগিয়ে গেছেন!',
+        'cash'
+      );
+    }
+    this.emitHudSnapshot();
+  }
+
+  private triggerProceduralGridlock(): void {
+    const rx = this.rickshaw.root.position.x;
+    const rz = this.rickshaw.root.position.z;
+    const sinY = Math.sin(this.yaw);
+    const cosY = Math.cos(this.yaw);
+
+    // Determine player's active road corridor & heading direction
+    const onZAxis = Math.abs(cosY) >= Math.abs(sinY);
+    const axis: 'Z' | 'X' = onZAxis ? 'Z' : 'X';
+    const dir: -1 | 1 = onZAxis ? (cosY >= 0 ? -1 : 1) : sinY >= 0 ? -1 : 1;
+    const aveBase = onZAxis
+      ? Math.round(rx / CELL_SIZE) * CELL_SIZE
+      : Math.round(rz / CELL_SIZE) * CELL_SIZE;
+
+    // Must be on an avenue within ~8m to spawn ahead cleanly
+    const distFromAve = onZAxis ? Math.abs(rx - aveBase) : Math.abs(rz - aveBase);
+    if (distFromAve > 8.5) {
+      this.gridlockCooldown = 5.0;
+      return;
+    }
+
+    const candidates = this.traffic.filter((tr) => !tr.wrecked && tr.axis === axis);
+    if (candidates.length < 4) {
+      this.gridlockCooldown = 10.0;
+      return;
+    }
+
+    // Prefer wider buses/trucks/cars mixed with CNGs for tight Dhaka jam silhouettes
+    candidates.sort((a, b) => b.halfLen - a.halfLen);
+    const picked = candidates.slice(0, Math.min(5, candidates.length));
+
+    const playerAlong = onZAxis ? rz : rx;
+    // Staggered lanes inside the 4 divided lanes with narrow ~1.75m–2.1m slalom gaps between jammed vehicles
+    const jamSlots: Array<{ distAhead: number; lane: number }> = [
+      { distAhead: 25, lane: -5.55 },
+      { distAhead: 29, lane: -2.25 },
+      { distAhead: 33, lane: 2.25 },
+      { distAhead: 38, lane: 5.55 },
+      { distAhead: 43, lane: -3.85 },
+    ];
+
+    let maxAlong = -Infinity;
+    let minAlong = Infinity;
+
+    picked.forEach((tr, i) => {
+      const slot = jamSlots[i % jamSlots.length];
+      const alongPos = playerAlong + dir * slot.distAhead;
+      tr.isGridlocked = true;
+      tr.aveBase = aveBase;
+      tr.laneOffset = slot.lane;
+      tr.targetLaneOffset = slot.lane;
+      tr.avoidTimer = 0;
+      tr.currentSpeed = 0.75;
+      tr.stoppedAtLight = false;
+      tr.nearMissAwarded = false;
+
+      if (axis === 'Z') {
+        tr.mesh.position.set(aveBase + slot.lane, 0, alongPos);
+        tr.mesh.rotation.set(0, tr.direction === -1 ? 0 : Math.PI, 0);
+      } else {
+        tr.mesh.position.set(alongPos, 0, aveBase + slot.lane);
+        tr.mesh.rotation.set(0, tr.direction === 1 ? -Math.PI / 2 : Math.PI / 2, 0);
+      }
+
+      if (alongPos > maxAlong) maxAlong = alongPos;
+      if (alongPos < minAlong) minAlong = alongPos;
+
+      if (i === 0 || i === 2) {
+        this.spawnScoldBubble(
+          tr.mesh,
+          true,
+          tr.isBus || tr.isTruck ? 3.5 : 2.3,
+          i === 0 ? 1 : 5
+        );
+      }
+    });
+
+    this.gridlockActive = true;
+    this.gridlockTimer = 0;
+    this.gridlockAxis = axis;
+    this.gridlockDir = dir;
+    this.gridlockAveBase = aveBase;
+    this.gridlockEndAlong = dir === 1 ? maxAlong : minAlong;
+    this.gridlockHitCount = 0;
+
+    soundEngine.playTrafficHorn(true);
+    this.emitPopup(
+      '🚧 ভয়াবহ ঢাকা যানজট!',
+      'চিপা গলি দিয়ে কাটান অথবা [B] বেল দিয়ে রাস্তা ফাঁকা করুন!',
+      'warning'
+    );
+    this.triggerBreakingNews(
+      'CHAOS',
+      'সড়কে হঠাৎ তীব্র যানজট: গাড়ির সারি আটকে আছে!',
+      'চিপা গলি দিয়ে কাটিয়ে যান অথবা বেল বাজিয়ে গাড়ি সরান',
+      false
+    );
+    this.emitHudSnapshot();
+  }
+
+  private updateGridlockEvent(dt: number): void {
+    if (!this.gridlockActive) {
+      if (Math.abs(this.speed) > 4.5) {
+        this.gridlockCooldown -= dt;
+        if (this.gridlockCooldown <= 0) {
+          this.triggerProceduralGridlock();
+        }
+      }
+      return;
+    }
+
+    this.gridlockTimer += dt;
+    const rx = this.rickshaw.root.position.x;
+    const rz = this.rickshaw.root.position.z;
+    const playerAlong = this.gridlockAxis === 'Z' ? rz : rx;
+    const playerLatDist =
+      this.gridlockAxis === 'Z' ? Math.abs(rx - this.gridlockAveBase) : Math.abs(rz - this.gridlockAveBase);
+
+    const passedAhead = (playerAlong - this.gridlockEndAlong) * this.gridlockDir > 8.5;
+    if (passedAhead) {
+      this.clearGridlock(true);
+      return;
+    }
+
+    if (playerLatDist > 36 || this.gridlockTimer > 22) {
+      this.clearGridlock(false);
     }
   }
 
@@ -2404,9 +3119,9 @@ export class DhakaGameEngine {
       let shouldStop = false;
 
       if (tr.axis === 'Z') {
-        // Check active intersection cells on this N-S avenue using vehicle front bumper to stop line (±11.8m)
+        // Check active signalized intersection cells on this N-S avenue using vehicle front bumper to stop line (±11.8m)
         for (const cell of this.cells) {
-          if (Math.abs(cell.xCenter - tr.aveBase) > 10) continue;
+          if (!cell.hasSignal || Math.abs(cell.xCenter - tr.aveBase) > 10) continue;
           if (cell.state === 'RED' || cell.state === 'YELLOW') {
             if (tr.direction === -1) {
               const distToStop = tr.mesh.position.z - tr.halfLen - (cell.zCenter + 11.8);
@@ -2448,7 +3163,7 @@ export class DhakaGameEngine {
         }
 
         if (blockedAhead && tr.overtakeCooldown <= 0 && tr.vehicleType !== 'rickshaw') {
-          const lanes = tr.direction === -1 ? [-1.8, -3.6, -5.0] : [1.8, 3.6, 5.0];
+          const lanes = tr.direction === -1 ? [-2.1, -3.9, -5.7] : [2.1, 3.9, 5.7];
           for (const cand of lanes) {
             if (Math.abs(cand - tr.targetLaneOffset) > 0.5) {
               let occupied = false;
@@ -2504,8 +3219,8 @@ export class DhakaGameEngine {
           if (directAhead || closingTrajectory) {
             // Pick one steady, subtle nudge inside this vehicle's own road half (never crossing center median)
             if (tr.avoidTimer <= 0) {
-              const halfMin = tr.direction === -1 ? -5.15 : 1.65;
-              const halfMax = tr.direction === -1 ? -1.65 : 5.15;
+              const halfMin = tr.direction === -1 ? -6.35 : 1.55;
+              const halfMax = tr.direction === -1 ? -1.55 : 6.35;
               const awayDir = projX >= 0 ? -1 : 1;
               const candA = THREE.MathUtils.clamp(tr.baseLaneOffset + awayDir * 1.65, halfMin, halfMax);
               const candB = THREE.MathUtils.clamp(tr.baseLaneOffset + awayDir * 0.95, halfMin, halfMax);
@@ -2562,8 +3277,8 @@ export class DhakaGameEngine {
           }
         }
 
-        // Gently return toward preferred home lane once well clear
-        if (tr.avoidTimer <= 0 && Math.abs(tr.targetLaneOffset - tr.baseLaneOffset) > 0.3) {
+        // Gently return toward preferred home lane once well clear (hold position while gridlocked unless bell pushed it!)
+        if (!tr.isGridlocked && tr.avoidTimer <= 0 && Math.abs(tr.targetLaneOffset - tr.baseLaneOffset) > 0.3) {
           let homeBlocked = false;
           for (const other of this.traffic) {
             if (other === tr || other.wrecked || other.axis !== 'Z') continue;
@@ -2583,8 +3298,12 @@ export class DhakaGameEngine {
         }
 
         shouldStop = shouldStop || (blockedAhead && leadingGap < 2.2) || emergencyYieldStop;
-        tr.stoppedAtLight = shouldStop;
-        targetSpeed = shouldStop
+        tr.stoppedAtLight = shouldStop || tr.isGridlocked;
+        targetSpeed = tr.isGridlocked
+          ? tr.avoidTimer > 0
+            ? 2.2
+            : 0.7
+          : shouldStop
           ? 0
           : blockedAhead
           ? Math.min(targetSpeed * 0.65, 5.0) * yieldFactor
@@ -2642,7 +3361,7 @@ export class DhakaGameEngine {
       } else {
         // East-West Avenue Traffic (axis === 'X') using vehicle front bumper to stop line (±11.8m)
         for (const cell of this.cells) {
-          if (Math.abs(cell.zCenter - tr.aveBase) > 10) continue;
+          if (!cell.hasSignal || Math.abs(cell.zCenter - tr.aveBase) > 10) continue;
           // E-W stops when N-S is GREEN or YELLOW
           if (cell.state === 'GREEN' || cell.state === 'YELLOW') {
             if (tr.direction === 1) {
@@ -2684,7 +3403,7 @@ export class DhakaGameEngine {
         }
 
         if (blockedAhead && tr.overtakeCooldown <= 0 && tr.vehicleType !== 'rickshaw') {
-          const lanes = tr.direction === 1 ? [-1.8, -3.6, -5.0] : [1.8, 3.6, 5.0];
+          const lanes = tr.direction === 1 ? [-2.1, -3.9, -5.7] : [2.1, 3.9, 5.7];
           for (const cand of lanes) {
             if (Math.abs(cand - tr.targetLaneOffset) > 0.5) {
               let occupied = false;
@@ -2738,8 +3457,8 @@ export class DhakaGameEngine {
 
           if (directAhead || closingTrajectory) {
             if (tr.avoidTimer <= 0) {
-              const halfMin = tr.direction === 1 ? -5.15 : 1.65;
-              const halfMax = tr.direction === 1 ? -1.65 : 5.15;
+              const halfMin = tr.direction === 1 ? -6.35 : 1.55;
+              const halfMax = tr.direction === 1 ? -1.55 : 6.35;
               const awayDir = projZ >= 0 ? -1 : 1;
               const candA = THREE.MathUtils.clamp(tr.baseLaneOffset + awayDir * 1.65, halfMin, halfMax);
               const candB = THREE.MathUtils.clamp(tr.baseLaneOffset + awayDir * 0.95, halfMin, halfMax);
@@ -2795,7 +3514,7 @@ export class DhakaGameEngine {
           }
         }
 
-        if (tr.avoidTimer <= 0 && Math.abs(tr.targetLaneOffset - tr.baseLaneOffset) > 0.3) {
+        if (!tr.isGridlocked && tr.avoidTimer <= 0 && Math.abs(tr.targetLaneOffset - tr.baseLaneOffset) > 0.3) {
           let homeBlocked = false;
           for (const other of this.traffic) {
             if (other === tr || other.wrecked || other.axis !== 'X') continue;
@@ -2815,8 +3534,12 @@ export class DhakaGameEngine {
         }
 
         shouldStop = shouldStop || (blockedAhead && leadingGap < 2.2) || emergencyYieldStop;
-        tr.stoppedAtLight = shouldStop;
-        targetSpeed = shouldStop
+        tr.stoppedAtLight = shouldStop || tr.isGridlocked;
+        targetSpeed = tr.isGridlocked
+          ? tr.avoidTimer > 0
+            ? 2.2
+            : 0.7
+          : shouldStop
           ? 0
           : blockedAhead
           ? Math.min(targetSpeed * 0.65, 5.0) * yieldFactor
@@ -2897,22 +3620,26 @@ export class DhakaGameEngine {
       const dx = rx - tr.mesh.position.x;
       const dz = rz - tr.mesh.position.z;
       const hitRadius = tr.isTruck
-        ? 4.6
-        : tr.isBus
-        ? 4.2
-        : tr.vehicleType === 'leguna'
-        ? 3.4
-        : tr.vehicleType === 'car'
         ? 3.3
-        : tr.vehicleType === 'cng'
+        : tr.isBus
         ? 3.0
+        : tr.vehicleType === 'leguna'
+        ? 2.4
+        : tr.vehicleType === 'car'
+        ? 2.3
+        : tr.vehicleType === 'cng'
+        ? 2.0
         : tr.vehicleType === 'motorcycle'
-        ? 2.05
-        : 2.3;
+        ? 1.4
+        : 1.5;
       const distSq = dx * dx + dz * dz;
 
       if (distSq < hitRadius && tr.hitCooldown <= 0) {
         tr.hitCooldown = 0.65;
+        if (tr.isGridlocked) {
+          this.gridlockHitCount++;
+        }
+        this.spawnScoldBubble(tr.mesh, true, tr.isBus || tr.isTruck ? 3.0 : 1.95);
         const distInv = 1 / Math.max(Math.sqrt(distSq), 0.35);
         const nx = dx * distInv;
         const nz = dz * distInv;
@@ -2939,12 +3666,13 @@ export class DhakaGameEngine {
         const relImpactSpeed = Math.hypot(playerVx - vehVx, playerVz - vehVz);
 
         const vehicleDealtDamage = Math.round(
-          (this.turboTimer > 0 ? 95 : 18) + relImpactSpeed * (this.turboTimer > 0 ? 3.5 : 2.3)
+          (this.turboTimer > 0 || this.invincibleTimer > 0 ? 95 : 18) +
+            relImpactSpeed * (this.turboTimer > 0 || this.invincibleTimer > 0 ? 3.5 : 2.3)
         );
         tr.hp = Math.max(0, tr.hp - vehicleDealtDamage);
 
         // Apply mass-weighted physical knock & spin impulse to the struck vehicle
-        const playerMass = this.turboTimer > 0 ? 4.2 : 1.5;
+        const playerMass = this.turboTimer > 0 || this.invincibleTimer > 0 ? 4.2 : 1.5;
         const pushRatio = playerMass / (playerMass + tr.mass);
         const targetImpulse = Math.max(4.5, relImpactSpeed * 0.72) * pushRatio;
         tr.impactVelX += -nx * targetImpulse;
@@ -3012,27 +3740,35 @@ export class DhakaGameEngine {
           );
         }
 
-        if (this.turboTimer > 0) {
+        if (this.turboTimer > 0 || this.invincibleTimer > 0) {
           if (tr.hp > 0) {
-            const reward = tr.isTruck
-              ? 12000
-              : tr.isBus
-              ? 8000
-              : tr.vehicleType === 'car'
-              ? 6500
-              : tr.vehicleType === 'leguna'
-              ? 6000
-              : tr.vehicleType === 'cng'
-              ? 5000
-              : tr.vehicleType === 'motorcycle'
-              ? 4000
-              : 3500;
-            this.addMoney(reward);
-            this.emitPopup(
-              `টার্বো ধাক্কা! +৳${reward.toLocaleString('en-IN')}`,
-              `${vName} ক্ষতিগ্রস্ত (${tr.hp}/${tr.maxHp} HP)`,
-              'turbo'
-            );
+            if (this.turboTimer > 0) {
+              const reward = tr.isTruck
+                ? 12000
+                : tr.isBus
+                ? 8000
+                : tr.vehicleType === 'car'
+                ? 6500
+                : tr.vehicleType === 'leguna'
+                ? 6000
+                : tr.vehicleType === 'cng'
+                ? 5000
+                : tr.vehicleType === 'motorcycle'
+                ? 4000
+                : 3500;
+              this.addMoney(reward);
+              this.emitPopup(
+                `টার্বো ধাক্কা! +৳${reward.toLocaleString('en-IN')}`,
+                `${vName} ক্ষতিগ্রস্ত (${tr.hp}/${tr.maxHp} HP)`,
+                'turbo'
+              );
+            } else {
+              this.emitPopup(
+                '☕ চা-ব্রেক শিল্ড প্রোটেকশন!',
+                `${vName}-এর ধাক্কায় কোনো ড্যামেজ হয়নি!`,
+                'heal'
+              );
+            }
           }
         } else {
           // Momentum-conserving 2D impact deflection + suspension jolt
@@ -3401,8 +4137,8 @@ export class DhakaGameEngine {
         }
       }
 
-      // Soft pairwise crowd separation so nearby walking NPCs weave around each other instead of ghosting
-      if (isMoving && distSq < 2500) {
+      // Soft pairwise crowd separation only for nearby walking NPCs
+      if (isMoving && distSq < 784) {
         for (let j = i + 1; j < this.pedestrians.length; j++) {
           const other = this.pedestrians[j];
           if (other.fallenTimer > 0) continue;
@@ -3419,13 +4155,17 @@ export class DhakaGameEngine {
       }
 
       // Ground-hugging curb elevation + natural step bob + silky smooth facing turn
-      const localX = Math.abs(wrapCellLocal(ped.root.position.x));
-      const localZ = Math.abs(wrapCellLocal(ped.root.position.z));
-      const groundY = localX > 8.08 && localZ > 8.08 ? 0.26 : 0.02;
+      const groundY =
+        distSq < 2000
+          ? Math.abs(wrapCellLocal(ped.root.position.x)) > 8.08 &&
+            Math.abs(wrapCellLocal(ped.root.position.z)) > 8.08
+            ? 0.26
+            : 0.02
+          : p.baseY;
       if (isMoving) {
         p.stridePhase += dt * (moveRate * 3.85);
       }
-      const walkBob = isMoving ? Math.abs(Math.sin(p.stridePhase)) * 0.032 : 0;
+      const walkBob = isMoving && distSq < 1156 ? Math.abs(Math.sin(p.stridePhase)) * 0.026 : 0;
       ped.root.position.y = THREE.MathUtils.damp(ped.root.position.y, groundY + walkBob, 16, dt);
 
       p.currentYaw = dampAngle(p.currentYaw, p.targetYaw, 9.5, dt);
@@ -3441,7 +4181,7 @@ export class DhakaGameEngine {
       if (
         checkCollision &&
         p.hitCooldown <= 0 &&
-        distSq < 1.95 &&
+        distSq < 1.55 &&
         (Math.abs(this.speed) > 1.5 || Math.abs(this.lateralVel) > 1.5)
       ) {
         const wasJaywalking = p.aiState === 'JAYWALK' || p.aiState === 'PANIC_SCATTER';
@@ -3459,6 +4199,7 @@ export class DhakaGameEngine {
         p.fallYaw = Math.atan2(-nx, -nz);
         p.posY = ped.root.position.y;
 
+        this.spawnScoldBubble(ped.root, false, 1.85);
         this.speed *= 0.9;
         this.bounceVel += 1.15;
         this.cameraShake = Math.max(this.cameraShake, 0.22);
@@ -3494,8 +4235,19 @@ export class DhakaGameEngine {
         continue;
       }
 
-      // Expressive Smoothly-Damped Limb & Head Animation (zero frame snapping!)
-      if (distSq < 3800) {
+      // Close-call speeding buzz makes nearby pedestrian curse above their head!
+      if (
+        checkCollision &&
+        distSq >= 1.55 &&
+        distSq < 3.4 &&
+        Math.abs(this.speed) > 9.5 &&
+        p.hitCooldown <= 0
+      ) {
+        this.spawnScoldBubble(ped.root, false, 2.0);
+      }
+
+      // Expressive Smoothly-Damped Limb & Head Animation (tight distance cutoff for lag-free FPS)
+      if (distSq < 1156) {
         let tgtLegL = 0;
         let tgtLegR = 0;
         let tgtArmL = 0;
@@ -3597,20 +4349,18 @@ export class DhakaGameEngine {
     const rx = this.rickshaw.root.position.x;
     const rz = this.rickshaw.root.position.z;
     let nearestDist = Infinity;
+    let activeChasers = 0;
 
-    for (let i = 0; i < this.mobs.length; i++) {
+    for (let i = this.mobs.length - 1; i >= 0; i--) {
       const m = this.mobs[i];
       const pos = m.rig.root.position;
+      const distToPlayer = Math.hypot(pos.x - rx, pos.z - rz);
 
-      // 2D distance recycle around player (never clamped to x = ±8.8!)
-      if (Math.hypot(pos.x - rx, pos.z - rz) > 75) {
-        const angle = (i / Math.max(1, this.mobs.length)) * Math.PI * 2;
-        pos.set(rx + Math.cos(angle) * 28, 0, rz + Math.sin(angle) * 28);
-        m.stunTimer = 0;
-        m.fallenTimer = 0;
-        m.fallTiltX = 0;
-        m.posY = 0;
-        m.rig.root.rotation.set(0, 0, 0);
+      // Despawn shopkeeper cleanly once player escapes far away or injured owner walks off
+      if (distToPlayer > (m.injuredLeaving ? 42 : 64)) {
+        this.scene.remove(m.rig.root);
+        this.mobs.splice(i, 1);
+        continue;
       }
 
       if (m.fallenTimer > 0) {
@@ -3622,8 +4372,8 @@ export class DhakaGameEngine {
 
         m.velY -= 22 * dt;
         m.posY += m.velY * dt;
-        if (m.posY <= 0.16) {
-          m.posY = 0.16;
+        if (m.posY <= 0.14) {
+          m.posY = 0.14;
           m.velY = m.velY < -2 ? -m.velY * 0.25 : 0;
         }
         pos.y = m.posY;
@@ -3639,7 +4389,7 @@ export class DhakaGameEngine {
         continue;
       }
 
-      if (m.stunTimer > 0) {
+      if (m.stunTimer > 0 && !m.injuredLeaving) {
         m.stunTimer -= dt;
         pos.x += m.knockVelX * dt;
         pos.z += m.knockVelZ * dt;
@@ -3649,6 +4399,31 @@ export class DhakaGameEngine {
         continue;
       }
 
+      // Injured shopkeeper ("আহত হয়ে খুঁড়িয়ে চলে যাওয়া") limps away and never resumes chasing
+      if (m.injuredLeaving) {
+        m.leaveTimer -= dt;
+        if (m.leaveTimer <= 0) {
+          this.scene.remove(m.rig.root);
+          this.mobs.splice(i, 1);
+          continue;
+        }
+
+        const limpSpeed = 2.35;
+        pos.x += m.leaveDirX * limpSpeed * dt;
+        pos.z += m.leaveDirZ * limpSpeed * dt;
+        m.rig.root.rotation.y = Math.atan2(m.leaveDirX, m.leaveDirZ);
+        m.rig.root.rotation.z = 0.14; // Injured lean
+
+        const limpStride = elapsed * 5.8 + m.rig.phase;
+        pos.y = Math.abs(Math.sin(limpStride)) * 0.05;
+        m.rig.legL.rotation.x = Math.sin(limpStride) * 0.42;
+        m.rig.legR.rotation.x = -Math.sin(limpStride) * 0.18;
+        m.rig.armL.rotation.x = -0.35;
+        m.rig.armR.rotation.x = 0.45; // Lowered lathi arm while leaving
+        continue;
+      }
+
+      activeChasers++;
       _v1.set(rx - pos.x, 0, rz - pos.z);
       const dist = _v1.length();
       if (dist < nearestDist) nearestDist = dist;
@@ -3656,24 +4431,11 @@ export class DhakaGameEngine {
         _v1.divideScalar(dist);
       }
 
-      for (let j = 0; j < this.mobs.length; j++) {
-        if (i === j) continue;
-        const other = this.mobs[j].rig.root.position;
-        const sx = pos.x - other.x;
-        const sz = pos.z - other.z;
-        const sDistSq = sx * sx + sz * sz;
-        if (sDistSq < 1.4 && sDistSq > 0.0001) {
-          const inv = 1 / Math.sqrt(sDistSq);
-          _v1.x += sx * inv * 0.75;
-          _v1.z += sz * inv * 0.75;
-        }
-      }
-      _v1.normalize();
-
-      const mobSpeed = (9.0 + this.wantedLevel * 1.4) * m.rig.speedFactor;
+      const mobSpeed = (8.8 + this.wantedLevel * 1.1) * m.rig.speedFactor;
       pos.x += _v1.x * mobSpeed * dt;
       pos.z += _v1.z * mobSpeed * dt;
 
+      m.rig.root.rotation.z = 0;
       m.rig.root.lookAt(rx, 0, rz);
 
       const stride = elapsed * 13 * m.rig.speedFactor + m.rig.phase;
@@ -3686,38 +4448,57 @@ export class DhakaGameEngine {
         soundEngine.playDangerDewVoice();
       }
 
-      if (dist < 2.25 && (this.turboTimer > 0 || Math.abs(this.speed) > 6.2)) {
-        const launchSpeed = Math.max(10.5, Math.abs(this.speed) * 0.85);
+      // Ramming the chasing shopkeeper with the rickshaw injures him so he limps away!
+      if (dist < 2.25 && (this.turboTimer > 0 || Math.abs(this.speed) > 3.2)) {
+        const launchSpeed = Math.max(9.5, Math.abs(this.speed) * 0.8);
         m.knockVelX = -_v1.x * launchSpeed;
         m.knockVelZ = -_v1.z * launchSpeed;
-        m.velY = 3.8;
-        m.fallenTimer = 2.3;
-        m.stunTimer = 2.3;
+        m.velY = 3.4;
+        m.fallenTimer = 1.35;
+        m.stunTimer = 0;
+        m.injuredLeaving = true;
+        m.leaveTimer = 5.2;
+
+        const awayX = -_v1.x;
+        const awayZ = -_v1.z;
+        const sideSign = i % 2 === 0 ? 1 : -1;
+        const fx = awayX - awayZ * 0.45 * sideSign;
+        const fz = awayZ + awayX * 0.45 * sideSign;
+        const fLen = Math.hypot(fx, fz) || 1;
+        m.leaveDirX = fx / fLen;
+        m.leaveDirZ = fz / fLen;
+
+        this.spawnScoldBubble(m.rig.root, false, 1.55);
+        this.emitPopup(
+          '🤕 দোকানদার আহত!',
+          'রিকশার ধাক্কা খেয়ে দোকানদার খুঁড়িয়ে সরে যাচ্ছে!',
+          'warning'
+        );
         soundEngine.playHit();
         soundEngine.playDipjolVoice();
         this.cameraShake = Math.max(this.cameraShake, 0.18);
-      } else if (dist < 1.95 && this.turboTimer <= 0) {
-        this.applyDamage(20 * dt);
+      } else if (dist < 1.85 && this.turboTimer <= 0 && this.invincibleTimer <= 0) {
+        this.applyDamage(18 * dt);
         this.cameraShake = Math.max(this.cameraShake, 0.14);
       }
     }
 
     this.closestMobDist = nearestDist;
-    const isClosePursuit = this.phase === GamePhase.PLAYING && this.mobs.length > 0 && nearestDist < 19.0;
+    const isClosePursuit = this.phase === GamePhase.PLAYING && activeChasers > 0 && nearestDist < 19.0;
     if (isClosePursuit && elapsed - this.lastChaseNewsAt > 11.0 && this.newsCooldown <= 0) {
       this.lastChaseNewsAt = elapsed;
       const driverName = DRIVER_PROFILES[this.selectedDriverId].nameBn;
       this.triggerBreakingNews(
         'MOB_CHASE',
-        `লাইভ ধাওয়া: ${this.mobs.length} জন ক্ষিপ্ত জনতার পিছু ধাওয়া!`,
-        `দ্রুত গতিতে রিকশা টানছেন ${driverName} · যেকোনো মুহূর্তে বড় বিশৃঙ্খলার আশঙ্কা!`,
+        `লাইভ ধাওয়া: ক্ষিপ্ত দোকানদার পিছু নিয়েছেন!`,
+        `দ্রুত গতিতে রিকশা টানছেন ${driverName} · ধাক্কা দিয়ে দোকানদারকে কাবু করুন!`,
         false
       );
     }
   }
 
   private applyDamage(amount: number): void {
-    if (this.phase !== GamePhase.PLAYING) return;
+    if (this.phase !== GamePhase.PLAYING || this.invincibleTimer > 0) return;
     this.health = Math.max(0, this.health - amount);
     if (this.health <= 0) {
       this.health = 0;
@@ -3796,7 +4577,7 @@ export class DhakaGameEngine {
 
     // 1. Mob Chase Camera Blend (frames angry chasing mob behind & rickshaw weaving ahead)
     const mobThreatTarget =
-      this.mobs.length > 0 && this.closestMobDist < 19
+      this.closestMobDist < 19
         ? THREE.MathUtils.clamp((19 - this.closestMobDist) / 14, 0, 1)
         : 0;
     this.mobChaseCamBlend = THREE.MathUtils.damp(this.mobChaseCamBlend, mobThreatTarget, 3.6, dt);
@@ -3808,25 +4589,25 @@ export class DhakaGameEngine {
     let desiredRoll = 0;
 
     if (this.cameraMode === CameraMode.DRIVER) {
-      _camDesired.set(rx - sinY * 0.55, ry + 1.88, rz - cosY * 0.55);
-      _camLookTarget.set(rx - sinY * 14, ry + 1.35, rz - cosY * 14);
+      _camDesired.set(rx - sinY * 0.44, ry + 1.46, rz - cosY * 0.44);
+      _camLookTarget.set(rx - sinY * 14, ry + 1.15, rz - cosY * 14);
       this.camera.position.lerp(_camDesired, 1 - Math.exp(-18 * dt));
       this.currentLookAt.lerp(_camLookTarget, 1 - Math.exp(-18 * dt));
       desiredRoll = this.accidentRollTarget * accidentBlend * 0.45;
     } else if (this.cameraMode === CameraMode.FRONT) {
-      const distFront = 3.4 + this.mobChaseCamBlend * 0.8;
+      const distFront = 2.95 + this.mobChaseCamBlend * 0.7;
       _camDesired.set(
-        rx - sinY * distFront - this.steerAngle * 0.6,
-        ry + 1.82 + this.mobChaseCamBlend * 0.3,
+        rx - sinY * distFront - this.steerAngle * 0.5,
+        ry + 1.52 + this.mobChaseCamBlend * 0.25,
         rz - cosY * distFront
       );
-      _camLookTarget.set(rx, ry + 1.25, rz);
+      _camLookTarget.set(rx, ry + 1.05, rz);
       this.camera.position.lerp(_camDesired, 1 - Math.exp(-14 * dt));
       this.currentLookAt.lerp(_camLookTarget, 1 - Math.exp(-16 * dt));
       desiredRoll = this.accidentRollTarget * accidentBlend * 0.6;
     } else {
-      const baseDist = this.cameraMode === CameraMode.ACTION ? 5.2 : 7.4;
-      const baseHeight = this.cameraMode === CameraMode.ACTION ? 2.45 : 3.55;
+      const baseDist = this.cameraMode === CameraMode.ACTION ? 4.5 : 6.2;
+      const baseHeight = this.cameraMode === CameraMode.ACTION ? 2.15 : 3.05;
 
       // Pursuit Camera dynamically widens, pulls back, and adds subtle shoulder sweep when mobs chase
       const mobSway = Math.sin(this.clock.elapsedTime * 2.1) * 0.85 * this.mobChaseCamBlend;
@@ -3875,6 +4656,7 @@ export class DhakaGameEngine {
       60 +
       Math.min(Math.abs(this.speed) / 28, 1) * 11 +
       (this.turboTimer > 0 ? 7 : 0) +
+      (this.jhalMuriTimer > 0 ? 4.5 : 0) +
       this.mobChaseCamBlend * 5.0 +
       accidentBlend * 6.5;
     if (Math.abs(this.camera.fov - targetFov) > 0.05) {
@@ -3902,12 +4684,16 @@ export class DhakaGameEngine {
       distanceMeters: Math.floor(this.distanceMeters),
       bellCooldownRatio: 1 - this.bellCooldown / BELL_COOLDOWN_SEC,
       turboRemainingRatio: this.turboTimer / TURBO_DURATION_SEC,
-      activeMobCount: this.mobs.length,
+      invincibleRemainingRatio: this.invincibleTimer / INVINCIBLE_DURATION_SEC,
+      jhalMuriRemainingRatio: this.jhalMuriTimer / JHAL_MURI_DURATION_SEC,
+      activeMobCount: this.mobs.reduce((cnt, m) => cnt + (m.injuredLeaving ? 0 : 1), 0),
       trafficCount: this.traffic.length,
       trafficSignal: this.activeCrossingHudInfo,
       weather: this.weather,
+      autoWeather: this.autoWeather,
       roadGrip: this.roadGrip,
       breakingNews: this.activeNews,
+      gridlockActive: this.gridlockActive,
     });
   }
 
@@ -3929,6 +4715,11 @@ export class DhakaGameEngine {
     if (this.envMapTexture) {
       this.envMapTexture.dispose();
     }
+
+    for (const slot of this.speechPool) {
+      slot.sprite.material.dispose();
+    }
+    this.speechPool.length = 0;
 
     const disposedGeos = new Set<THREE.BufferGeometry>();
     const disposedMats = new Set<THREE.Material>();

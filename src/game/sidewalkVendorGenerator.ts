@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ProceduralTexturePack } from './textures';
 import { BatchMaterialCache, mergeStaticGroupByMaterial } from './meshBatcher';
+import { createSeatedShopkeeperModel } from './cityBuildingModels';
 
 export type SidewalkStallCategory = 'veggie' | 'chai' | 'flower' | 'vendor';
 
@@ -181,53 +182,58 @@ export function createChaiTongStallModel(
   });
   const bananaMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.52 });
 
-  // Main wooden counter
-  const counter = new THREE.Mesh(new THREE.BoxGeometry(2.15, 0.86, 1.15), woodMat);
-  counter.position.set(0, 0.43, 0);
+  // Main wooden counter shifted slightly forward so Chai-Mama sits comfortably inside!
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(2.15, 0.86, 0.82), woodMat);
+  counter.position.set(0, 0.43, 0.22);
   counter.castShadow = true;
   counter.receiveShadow = true;
   stall.add(counter);
 
+  // Seated Tea-Stall Owner ("টংয়ের চা-মামা") on stool behind counter
+  const teaMama = createSeatedShopkeeperModel('tea_mama', variant, textures, false);
+  teaMama.position.set(0.24, 0, -0.44);
+  stall.add(teaMama);
+
   // Wooden front customer bench
   const benchTop = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.08, 0.36), woodMat);
-  benchTop.position.set(0, 0.44, 0.86);
+  benchTop.position.set(0, 0.44, 0.94);
   stall.add(benchTop);
   [-0.72, 0.72].forEach((bx) => {
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.42, 0.3), woodMat);
-    leg.position.set(bx, 0.21, 0.86);
+    leg.position.set(bx, 0.21, 0.94);
     stall.add(leg);
   });
 
   // 4 Bamboo support poles
-  [[-1.0, -0.5], [1.0, -0.5], [-1.0, 0.5], [1.0, 0.5]].forEach(([px, pz]) => {
+  [[-1.0, -0.58], [1.0, -0.58], [-1.0, 0.56], [1.0, 0.56]].forEach(([px, pz]) => {
     const post = new THREE.Mesh(geos.bambooPost, bambooMat);
     post.position.set(px, 1.03, pz);
     stall.add(post);
   });
 
   // Sloped corrugated tin / tarp lean-to canopy
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(2.45, 0.08, 1.65), awningMat);
-  roof.position.set(0, 2.08, 0.08);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(2.45, 0.08, 1.78), awningMat);
+  roof.position.set(0, 2.08, 0.02);
   roof.rotation.x = 0.16;
   roof.castShadow = true;
   stall.add(roof);
 
   // Charcoal tea stove ("চুলা") & gleaming aluminum kettle ("কেতলি")
   const stove = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.22, 8), stoveMat);
-  stove.position.set(-0.62, 0.97, 0.05);
+  stove.position.set(-0.62, 0.97, 0.2);
   stall.add(stove);
 
   const ember = new THREE.Mesh(new THREE.CircleGeometry(0.14, 8), emberMat);
   ember.rotation.x = -Math.PI / 2;
-  ember.position.set(-0.62, 1.085, 0.05);
+  ember.position.set(-0.62, 1.085, 0.2);
   stall.add(ember);
 
   const kettle = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 0.3, 10), steelMat);
-  kettle.position.set(-0.62, 1.24, 0.05);
+  kettle.position.set(-0.62, 1.24, 0.2);
   stall.add(kettle);
 
   const kettleSpout = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 0.18, 6), steelMat);
-  kettleSpout.position.set(-0.46, 1.28, 0.05);
+  kettleSpout.position.set(-0.46, 1.28, 0.2);
   kettleSpout.rotation.z = -0.75;
   stall.add(kettleSpout);
 
@@ -235,16 +241,16 @@ export function createChaiTongStallModel(
   for (let j = 0; j < 4; j++) {
     const jx = -0.15 + j * 0.24;
     const jar = new THREE.Mesh(geos.jarBody, glassJarMat);
-    jar.position.set(jx, 0.97, 0.28);
+    jar.position.set(jx, 0.97, 0.42);
     stall.add(jar);
     const lid = new THREE.Mesh(geos.jarLid, jarCapMat);
-    lid.position.set(jx, 1.09, 0.28);
+    lid.position.set(jx, 1.09, 0.42);
     stall.add(lid);
   }
 
   // Hanging yellow banana bunch ("কলার কাঁদি")
   const bananaCluster = new THREE.Group();
-  bananaCluster.position.set(0.84, 1.62, 0.45);
+  bananaCluster.position.set(0.84, 1.62, 0.5);
   for (let b = 0; b < 5; b++) {
     const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.032, 0.12, 3, 6), bananaMat);
     finger.position.set((b - 2) * 0.045, -0.08 - (b % 2) * 0.03, 0.02);
@@ -266,7 +272,7 @@ export function createChaiTongStallModel(
       roughness: 0.45,
     })
   );
-  signMesh.position.set(0, 1.94, 0.62);
+  signMesh.position.set(0, 1.94, 0.68);
   stall.add(signMesh);
 
   return stall;
@@ -386,6 +392,11 @@ export function createFlowerShopModel(
   signMesh.position.set(0, 1.98, 0.62);
   shop.add(signMesh);
 
+  // Seated Flower Seller ("ফুলের দোকানি") on stool behind floral tiers
+  const flowerSeller = createSeatedShopkeeperModel('vendor', variant + 1, textures, false);
+  flowerSeller.position.set(0.1, 0, -0.82);
+  shop.add(flowerSeller);
+
   return shop;
 }
 
@@ -475,21 +486,26 @@ export function createUniqueStreetVendorModel(
     signMesh.position.set(0.15, 0.96, -0.44);
     group.add(signMesh);
 
+    // Seated Book / Pan Hawker ("বই ও পান বিক্রেতা") behind stand
+    const bookSeller = createSeatedShopkeeperModel('mudi', variant + 2, textures, true);
+    bookSeller.position.set(0.18, 0, -0.74);
+    group.add(bookSeller);
+
     return group;
   }
 
   if (archetype === 'balloon_toys') {
-    // Hawker Stool + Basket + Vibrant Floating Balloon Bouquet Pole
-    const stool = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.45, 0.65), cartWoodMat);
-    stool.position.set(0, 0.225, 0);
-    group.add(stool);
-
+    // Hawker Basket + Seated Balloon Seller on Stool + Vibrant Balloon Pole
     const basket = new THREE.Mesh(
       new THREE.CylinderGeometry(0.32, 0.24, 0.36, 9),
       new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.85 })
     );
-    basket.position.set(0.08, 0.62, 0.05);
+    basket.position.set(-0.34, 0.18, 0.24);
     group.add(basket);
+
+    const balloonSeller = createSeatedShopkeeperModel('vendor', variant + 3, textures, false);
+    balloonSeller.position.set(0.24, 0, -0.12);
+    group.add(balloonSeller);
 
     const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.032, 2.45, 6), wheelMat);
     stick.position.set(-0.22, 1.25, -0.1);
@@ -619,6 +635,12 @@ export function createUniqueStreetVendorModel(
   uCanopy.position.set(-0.25, 2.56, -0.2);
   group.add(uCanopy);
 
+  // Seated Fuchka / Coconut Vendor ("মামা") on stool behind cart handle
+  const cartVendor = createSeatedShopkeeperModel('tea_mama', variant + 4, textures, false);
+  cartVendor.position.set(-1.26, 0, 0.05);
+  cartVendor.rotation.y = Math.PI / 2;
+  group.add(cartVendor);
+
   return group;
 }
 
@@ -639,13 +661,17 @@ export function populateSidewalksForCell(
   const rng = createSeededRng(cellIndex * 7919 + 4099);
   const smashableStalls: ProceduralSidewalkStallEntry[] = [];
 
-  // Track static prop exclusion spots on sidewalks so nothing clips bus shelters, dumpsters, or poles
+  // Track static prop exclusion spots on sidewalks so nothing clips bus shelters, dumpsters, power-up kiosks, or poles
   const blockedZones: Array<{ x: number; z: number; r: number }> = [
     { x: 10.35, z: -21.0, r: 4.0 }, // Bus shelter NS
     { x: -21.0, z: 10.35, r: 4.0 }, // Bus shelter EW
     { x: -10.4, z: -17.5, r: 3.4 }, // DSCC Dumpster
     { x: 10.1, z: 12.2, r: 2.5 }, // Dir sign A
     { x: -12.2, z: -10.1, r: 2.5 }, // Dir sign B
+    { x: 9.85, z: 30.8, r: 3.6 }, // Interactive Chai-Break Kiosk
+    { x: -9.85, z: -33.8, r: 3.6 }, // Interactive Jhal-Muri Kiosk
+    { x: -30.8, z: 9.85, r: 3.6 }, // Interactive Chai-Break Kiosk EW
+    { x: -32.2, z: -9.85, r: 3.6 }, // Interactive Jhal-Muri Kiosk EW
   ];
   ([-1, 1] as const).forEach((sx) => {
     ([-1, 1] as const).forEach((sz) => {

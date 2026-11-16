@@ -119,12 +119,12 @@ export function createCngModel(textures: ProceduralTexturePack): THREE.Group {
   const sculptedGeos = getSculptedGeometries();
 
   const root = new THREE.Group();
-  root.add(createContactShadowMesh(textures.contactShadow, 2.15, 3.45));
+  root.add(createContactShadowMesh(textures.contactShadow, 1.85, 2.85));
 
   // Inner assembly uses native sculpted orientation (+Z = front) then rotates PI on Y so front aligns to -Z
   const body = new THREE.Group();
   body.rotation.y = Math.PI;
-  body.scale.setScalar(1.14);
+  body.scale.setScalar(0.92);
   root.add(body);
 
   // Calibrated PBR Materials

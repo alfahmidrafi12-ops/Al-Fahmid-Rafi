@@ -86,7 +86,6 @@ function buildPivotArm(
     armPivot.add(forearm);
   } else {
     const sleeve = new THREE.Mesh(prim.armCylGeo, sleeveMat);
-    sleeve.castShadow = true;
     armPivot.add(sleeve);
     const hand = new THREE.Mesh(new THREE.SphereGeometry(0.044, 6, 6), skinMat);
     hand.position.set(0, -0.49, 0);
@@ -105,7 +104,6 @@ function buildPivotLeg(
   const legPivot = new THREE.Group();
   legPivot.position.set(xPos, yPos, 0);
   const legMesh = new THREE.Mesh(prim.legCylGeo, legMat);
-  legMesh.castShadow = true;
   legPivot.add(legMesh);
 
   const shoe = new THREE.Mesh(prim.shoeGeo, shoeMat);
@@ -161,13 +159,11 @@ function createGraminNpc(seed: number, textures: ProceduralTexturePack): Pedestr
   // Lungi cylinder
   const lungi = new THREE.Mesh(new THREE.CylinderGeometry(0.195, 0.255, 0.72, 10), lungiMat);
   lungi.position.set(0, 0.54, 0);
-  lungi.castShadow = true;
   root.add(lungi);
 
   // Relaxed rural fatua torso
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.41, 0.52, 0.25), shirtMat);
   torso.position.set(0, 1.1, 0);
-  torso.castShadow = true;
   root.add(torso);
 
   // Iconic Red/Orange Checkered Gamcha draped over shoulder OR tied on forehead
@@ -181,7 +177,6 @@ function createGraminNpc(seed: number, textures: ProceduralTexturePack): Pedestr
   const head = new THREE.Group();
   head.position.set(0, 1.5, 0);
   const skull = new THREE.Mesh(prim.headGeo, skinMat);
-  skull.castShadow = true;
   head.add(skull);
   addEyes(head, prim);
 
@@ -190,7 +185,6 @@ function createGraminNpc(seed: number, textures: ProceduralTexturePack): Pedestr
     const mathalMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.88 });
     const mathal = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.16, 12), mathalMat);
     mathal.position.set(0, 0.14, 0);
-    mathal.castShadow = true;
     head.add(mathal);
   } else {
     const hair = new THREE.Mesh(
@@ -274,7 +268,6 @@ function createSmartNpc(seed: number, textures: ProceduralTexturePack): Pedestri
   // Shirt / Blazer torso
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.41, 0.53, 0.24), upperMat);
   torso.position.set(0, 1.09, 0);
-  torso.castShadow = true;
   root.add(torso);
 
   // Crisp inner white shirt V + Necktie OR Office Lanyard facing -Z
@@ -293,14 +286,12 @@ function createSmartNpc(seed: number, textures: ProceduralTexturePack): Pedestri
   const packMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.62 });
   const backpack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.14), packMat);
   backpack.position.set(0, 1.11, 0.18);
-  backpack.castShadow = true;
   root.add(backpack);
 
   // Head + Styled Hair + Sunglasses
   const head = new THREE.Group();
   head.position.set(0, 1.51, 0);
   const skull = new THREE.Mesh(prim.headGeo, skinMat);
-  skull.castShadow = true;
   head.add(skull);
 
   const hair = new THREE.Mesh(
@@ -379,7 +370,6 @@ function createCityStyleNpc(seed: number, textures: ProceduralTexturePack): Pede
 
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.43, 0.54, 0.26), jacketMat);
   torso.position.set(0, 1.09, 0);
-  torso.castShadow = true;
   root.add(torso);
 
   // Trendy Hoodie collar + Crossbody Sling Strap
@@ -400,7 +390,6 @@ function createCityStyleNpc(seed: number, textures: ProceduralTexturePack): Pede
   const head = new THREE.Group();
   head.position.set(0, 1.51, 0);
   const skull = new THREE.Mesh(prim.headGeo, skinMat);
-  skull.castShadow = true;
   head.add(skull);
   addEyes(head, prim);
 
@@ -491,12 +480,10 @@ function createMurubbiNpc(seed: number, textures: ProceduralTexturePack): Pedest
   // Flowing Panjabi knee-length coat
   const panjabiSkirt = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.24, 0.56, 10), panjabiMat);
   panjabiSkirt.position.set(0, 0.66, 0);
-  panjabiSkirt.castShadow = true;
   root.add(panjabiSkirt);
 
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.24), panjabiMat);
   torso.position.set(0, 1.12, 0);
-  torso.castShadow = true;
   root.add(torso);
 
   // Subtle embroidered Panjabi chest placket
@@ -511,7 +498,6 @@ function createMurubbiNpc(seed: number, textures: ProceduralTexturePack): Pedest
   const head = new THREE.Group();
   head.position.set(0, 1.5, 0);
   const skull = new THREE.Mesh(prim.headGeo, skinMat);
-  skull.castShadow = true;
   head.add(skull);
   addEyes(head, prim);
 
@@ -582,12 +568,10 @@ function createFeriwalaNpc(seed: number, textures: ProceduralTexturePack): Pedes
 
   const lungi = new THREE.Mesh(new THREE.CylinderGeometry(0.195, 0.25, 0.7, 10), lungiMat);
   lungi.position.set(0, 0.54, 0);
-  lungi.castShadow = true;
   root.add(lungi);
 
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.41, 0.52, 0.25), vestMat);
   torso.position.set(0, 1.1, 0);
-  torso.castShadow = true;
   root.add(torso);
 
   // Gamcha collar ring around neck
@@ -599,7 +583,6 @@ function createFeriwalaNpc(seed: number, textures: ProceduralTexturePack): Pedes
   const head = new THREE.Group();
   head.position.set(0, 1.5, 0);
   const skull = new THREE.Mesh(prim.headGeo, skinMat);
-  skull.castShadow = true;
   head.add(skull);
   addEyes(head, prim);
 
@@ -614,7 +597,6 @@ function createFeriwalaNpc(seed: number, textures: ProceduralTexturePack): Pedes
     const basketMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.88 });
     const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.2, 0.2, 10), basketMat);
     basket.position.set(0, 0.24, 0);
-    basket.castShadow = true;
     head.add(basket);
 
     const fruitColors = [0x16a34a, 0xfacc15, 0xea580c];
@@ -691,18 +673,30 @@ export function createDiverseDhakaNpcModel(
   ];
   const arch = forcedArchetype ?? weightedOrder[Math.abs(seed) % weightedOrder.length];
 
+  let rig: PedestrianRig;
   switch (arch) {
     case 'borka':
-      return createBorkaWomanModel(seed, textures);
+      rig = createBorkaWomanModel(seed, textures);
+      break;
     case 'gramin':
-      return createGraminNpc(seed, textures);
+      rig = createGraminNpc(seed, textures);
+      break;
     case 'smart':
-      return createSmartNpc(seed, textures);
+      rig = createSmartNpc(seed, textures);
+      break;
     case 'city_style':
-      return createCityStyleNpc(seed, textures);
+      rig = createCityStyleNpc(seed, textures);
+      break;
     case 'murubbi':
-      return createMurubbiNpc(seed, textures);
+      rig = createMurubbiNpc(seed, textures);
+      break;
     case 'feriwala':
-      return createFeriwalaNpc(seed, textures);
+      rig = createFeriwalaNpc(seed, textures);
+      break;
   }
+
+  if (arch !== 'borka') {
+    rig.root.scale.setScalar(0.78);
+  }
+  return rig;
 }

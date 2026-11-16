@@ -281,5 +281,6 @@ export function createDhakaMotorcycleModel(
     bike.add(pack);
   }
 
+  bike.scale.setScalar(0.82);
   return bike;
 }

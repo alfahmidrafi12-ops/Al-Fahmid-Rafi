@@ -65,6 +65,153 @@ function makeSignTex(
   return tex;
 }
 
+export type ShopkeeperStyle = 'pharmacy' | 'mudi' | 'recharge' | 'hotel' | 'tea_mama' | 'vendor';
+
+/**
+ * AUTHENTIC SEATED BANGLADESHI SHOPKEEPER ("দোকানদার / গদিতে বসা ব্যবসায়ী")
+ * Wooden stool, patterned lungi or trousers, bent seated legs, shirt/panjabi,
+ * optional shoulder gamcha, head with hair/tupi/glasses, and forward resting arms.
+ */
+export function createSeatedShopkeeperModel(
+  style: ShopkeeperStyle,
+  seed: number,
+  textures: ProceduralTexturePack,
+  includeCashBox = true
+): THREE.Group {
+  const s = Math.abs(seed);
+  const keeper = new THREE.Group();
+
+  const skinTones = [0xc68642, 0xb5743c, 0xd49b63, 0x8d5524];
+  const skinMat = new THREE.MeshStandardMaterial({
+    color: skinTones[s % skinTones.length],
+    roughness: 0.72,
+  });
+
+  const shirtColor =
+    style === 'pharmacy'
+      ? 0xf8fafc
+      : style === 'recharge'
+        ? 0xec4899
+        : style === 'hotel'
+          ? 0xf59e0b
+          : style === 'tea_mama'
+            ? (s % 2 === 0 ? 0xe2e8f0 : 0x38bdf8)
+            : [0x15803d, 0x1d4ed8, 0xb91c1c, 0xfef3c7][s % 4];
+
+  const shirtMat = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.65 });
+  const lungiTex = textures.lungis[s % textures.lungis.length];
+  const lowerMat =
+    style === 'pharmacy' || style === 'recharge'
+      ? new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.78 })
+      : new THREE.MeshStandardMaterial({ map: lungiTex, roughness: 0.85 });
+
+  const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.88 });
+  const sandalMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+
+  // Stool / Plastic Chair ("দোকানের মোড়া / চেয়ার")
+  const seatTop = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.06, 0.42), woodMat);
+  seatTop.position.set(0, 0.46, 0);
+  keeper.add(seatTop);
+  [-0.16, 0.16].forEach((lx) => {
+    [-0.16, 0.16].forEach((lz) => {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.02, 0.44, 6), woodMat);
+      leg.position.set(lx, 0.22, lz);
+      keeper.add(leg);
+    });
+  });
+
+  // Seated lap + bent shins & sandals facing +Z
+  const lap = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.16, 0.34), lowerMat);
+  lap.position.set(0, 0.56, 0.12);
+  keeper.add(lap);
+
+  [-0.12, 0.12].forEach((lx) => {
+    const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.055, 0.42, 6), lowerMat);
+    shin.position.set(lx, 0.32, 0.26);
+    keeper.add(shin);
+
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.05, 0.16), sandalMat);
+    foot.position.set(lx, 0.06, 0.31);
+    keeper.add(foot);
+  });
+
+  // Upright seated torso leaning slightly forward toward counter
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.58, 0.26), shirtMat);
+  torso.position.set(0, 0.9, 0.02);
+  torso.rotation.x = 0.08;
+  keeper.add(torso);
+
+  // Classic Dhaka Gamcha towel draped over shoulder for tea_mama / mudi / vendor
+  if (style === 'tea_mama' || style === 'mudi' || (style === 'vendor' && s % 2 === 0)) {
+    const gamchaMat = new THREE.MeshStandardMaterial({
+      color: s % 2 === 0 ? 0xdc2626 : 0xea580c,
+      roughness: 0.85,
+    });
+    const gamcha = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.48, 0.3), gamchaMat);
+    gamcha.position.set(0.17, 0.98, 0.03);
+    keeper.add(gamcha);
+  }
+
+  // Arms reaching forward onto shop desk/counter (+Z)
+  [-0.25, 0.25].forEach((ax) => {
+    const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.048, 0.28, 6), shirtMat);
+    upperArm.position.set(ax, 1.0, 0.08);
+    upperArm.rotation.x = -0.55;
+    keeper.add(upperArm);
+
+    const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.04, 0.26, 6), skinMat);
+    forearm.position.set(ax * 0.88, 0.88, 0.26);
+    forearm.rotation.x = Math.PI / 2 - 0.18;
+    keeper.add(forearm);
+  });
+
+  // Head + Hair + Optional White Prayer Tupi or Glasses
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), skinMat);
+  head.position.set(0, 1.33, 0.04);
+  keeper.add(head);
+
+  const hair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.154, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.52),
+    hairMat
+  );
+  hair.position.set(0, 1.34, 0.03);
+  keeper.add(hair);
+
+  if (s % 3 === 0 || style === 'hotel') {
+    const tupiMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.72 });
+    const tupi = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.135, 0.148, 0.09, 10),
+      tupiMat
+    );
+    tupi.position.set(0, 1.44, 0.03);
+    keeper.add(tupi);
+  }
+
+  if (style === 'pharmacy' || style === 'recharge') {
+    const glassRimMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 });
+    const glasses = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.035, 0.04), glassRimMat);
+    glasses.position.set(0, 1.34, 0.18);
+    keeper.add(glasses);
+  }
+
+  // Classic wooden/steel Cash Drawer ("গদি / টাকার বাক্স") beside shopkeeper
+  if (includeCashBox) {
+    const cashMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.65 });
+    const brassMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35, metalness: 0.65 });
+    const cashBox = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.18, 0.28), cashMat);
+    cashBox.position.set(0.34, 0.72, 0.32);
+    keeper.add(cashBox);
+
+    const lock = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.03), brassMat);
+    lock.position.set(0.34, 0.72, 0.47);
+    keeper.add(lock);
+  }
+
+  keeper.scale.setScalar(0.82);
+  return keeper;
+}
+
 /**
  * 1. DHAKA RESIDENTIAL APARTMENT ("আবাসিক ফ্ল্যাট ও ব্যালকনি ভবন")
  * Ground-floor shutters + upper flats with iron-grilled balconies, sunshade chajjas, AC units, laundry & chilekotha rooftop.
@@ -235,7 +382,7 @@ export function createOldDhakaHeritageShophouseModel(
   const brickTone = [0x8c341c, 0x7c2d12, 0x993e24][Math.abs(variant) % 3];
   const width = 10.2 + (Math.abs(variant) % 3) * 1.1;
   const depth = 8.4;
-  const floors = 2 + (Math.abs(variant) % 2); // 2 or 3 stories
+  const floors = 3 + (Math.abs(variant) % 2); // 3 or 4 stories
   const height = floors * 3.4 + 0.8;
 
   const brickWallMat = new THREE.MeshStandardMaterial({
@@ -304,6 +451,18 @@ export function createOldDhakaHeritageShophouseModel(
     rail.position.set(0, 4.75, depth / 2 + 1.25);
     building.add(rail);
   }
+
+  // Seated Old Dhaka Shopkeeper + Sidewalk Counter under the tin overhang!
+  const counterTable = new THREE.Mesh(
+    new THREE.BoxGeometry(2.1, 0.84, 0.68),
+    new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.82 })
+  );
+  counterTable.position.set(-1.3, 0.42, depth / 2 + 1.12);
+  building.add(counterTable);
+
+  const heritageKeeper = createSeatedShopkeeperModel('mudi', variant + 3, textures, true);
+  heritageKeeper.position.set(-1.3, 0, depth / 2 + 0.56);
+  building.add(heritageKeeper);
 
   return building;
 }
@@ -737,6 +896,18 @@ export function createStreetRestaurantHotelModel(textures: ProceduralTexturePack
     });
   });
 
+  // Cashier desk & Seated Biryani Hotel Master ("বিরিয়ানি ঘরের দোকানদার") beside handi
+  const cashDesk = new THREE.Mesh(
+    new THREE.BoxGeometry(2.2, 0.88, 0.72),
+    new THREE.MeshStandardMaterial({ color: 0x7c2d12, roughness: 0.75 })
+  );
+  cashDesk.position.set(1.9, 0.44, depth / 2 + 1.22);
+  building.add(cashDesk);
+
+  const hotelKeeper = createSeatedShopkeeperModel('hotel', 2, textures, true);
+  hotelKeeper.position.set(1.9, 0, depth / 2 + 0.68);
+  building.add(hotelKeeper);
+
   return building;
 }
 
@@ -914,6 +1085,18 @@ export function createNewMarketArcadeModel(
       const rack = new THREE.Mesh(new THREE.BoxGeometry(2.35, 1.65, 0.12), garmentMat);
       rack.position.set(gx, 1.55, frontZ + 1.25);
       building.add(rack);
+    } else {
+      // Open New Market shop counter with seated cloth/book merchant inside colonnade bay!
+      const bayTable = new THREE.Mesh(
+        new THREE.BoxGeometry(2.1, 0.84, 0.62),
+        new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.78 })
+      );
+      bayTable.position.set(gx, 0.42, frontZ + 1.05);
+      building.add(bayTable);
+
+      const bayKeeper = createSeatedShopkeeperModel(gi === 1 ? 'mudi' : 'vendor', variant + gi, textures, true);
+      bayKeeper.position.set(gx, 0, frontZ + 0.56);
+      building.add(bayKeeper);
     }
   });
 
@@ -1156,7 +1339,7 @@ export function createDhakaTinShedBazaarRowModel(
 
   const width = 15.6;
   const depth = 8.4;
-  const wallH = 3.85;
+  const wallH = 4.95;
 
   const base = new THREE.Mesh(new THREE.BoxGeometry(width, wallH, depth), plasterMat);
   base.position.set(0, wallH / 2, 0);
@@ -1173,18 +1356,18 @@ export function createDhakaTinShedBazaarRowModel(
 
   // Bamboo / steel front support posts
   [-6.8, -2.2, 2.2, 6.8].forEach((px) => {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 3.2, 6), poleMat);
-    post.position.set(px, 1.6, depth / 2 + 1.55);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 3.6, 6), poleMat);
+    post.position.set(px, 1.8, depth / 2 + 1.55);
     building.add(post);
   });
 
   // Ground shop shutters & colorful garment hanging panel
   const shopTex = textures.dhakaShopfrontGround[Math.abs(variant) % textures.dhakaShopfrontGround.length];
   const shopMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(width - 0.8, 2.85),
+    new THREE.PlaneGeometry(width - 0.8, 3.05),
     new THREE.MeshStandardMaterial({ map: shopTex, roughness: 0.72 })
   );
-  shopMesh.position.set(0, 1.48, depth / 2 + 0.06);
+  shopMesh.position.set(0, 1.58, depth / 2 + 0.06);
   building.add(shopMesh);
 
   const rack = new THREE.Mesh(
@@ -1198,8 +1381,22 @@ export function createDhakaTinShedBazaarRowModel(
     new THREE.BoxGeometry(9.6, 1.75, 0.14),
     new THREE.MeshBasicMaterial({ map: cachedTinMarketSign })
   );
-  signMesh.position.set(0, 3.4, depth / 2 + 1.48);
+  signMesh.position.set(0, wallH - 0.45, depth / 2 + 1.48);
   building.add(signMesh);
+
+  // Seated Hawkers Bazaar Shopkeepers & counters under the tin-shed awning!
+  [-1.2, 4.4].forEach((kx, kIdx) => {
+    const shopDesk = new THREE.Mesh(
+      new THREE.BoxGeometry(2.15, 0.82, 0.64),
+      new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 })
+    );
+    shopDesk.position.set(kx, 0.41, depth / 2 + 1.05);
+    building.add(shopDesk);
+
+    const tinKeeper = createSeatedShopkeeperModel(kIdx === 0 ? 'vendor' : 'mudi', variant + kIdx, textures, true);
+    tinKeeper.position.set(kx, 0, depth / 2 + 0.55);
+    building.add(tinKeeper);
+  });
 
   return building;
 }
@@ -1341,7 +1538,7 @@ export function createDhakaOpenShopModel(
 
   const w = 6.4;
   const d = 4.6;
-  const h = 3.55;
+  const h = 4.05;
 
   // Hollow Open-Front Room Shell (Back wall + Left/Right side walls + Ceiling + Tiled Floor)
   const floor = new THREE.Mesh(new THREE.BoxGeometry(w, 0.14, d), floorMat);
@@ -1360,21 +1557,25 @@ export function createDhakaOpenShopModel(
     shop.add(sideWall);
   });
 
-  // Roof slab + compact upper 2nd floor veranda/flat over the open ground shop
+  // Roof slab + taller upper 2nd floor residential/commercial block over the open ground shop
   const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, 0.34, d + 0.6), outerWallMat);
   roof.position.set(0, h + 0.12, 0.15);
   shop.add(roof);
 
   const upperBlock = new THREE.Mesh(
-    new THREE.BoxGeometry(w, 2.55, d - 0.3),
+    new THREE.BoxGeometry(w, 3.65, d - 0.3),
     new THREE.MeshStandardMaterial({
       map: textures.heritageBrick,
       color: 0xe6d4c0,
       roughness: 0.85,
     })
   );
-  upperBlock.position.set(0, h + 1.5, -0.15);
+  upperBlock.position.set(0, h + 2.08, -0.15);
   shop.add(upperBlock);
+
+  const parapetCap = new THREE.Mesh(new THREE.BoxGeometry(w + 0.25, 0.28, d), outerWallMat);
+  parapetCap.position.set(0, h + 4.02, -0.15);
+  shop.add(parapetCap);
 
   // Rolled-up Corrugated Steel Shutter Drum above the completely open doorway
   const shutterDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, w - 0.6, 10), shutterMat);
@@ -1427,18 +1628,10 @@ export function createDhakaOpenShopModel(
   counterTop.position.set(0, 1.03, 0.78);
   shop.add(counterTop);
 
-  // Shopkeeper inside behind the counter!
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.72 });
-  const shirtMat = new THREE.MeshStandardMaterial({
-    color: kind === 'pharmacy' ? 0xf8fafc : accentColor,
-    roughness: 0.65,
-  });
-  const keeperBody = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.62, 0.28), shirtMat);
-  keeperBody.position.set(-0.2, 1.25, -0.05);
-  shop.add(keeperBody);
-  const keeperHead = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), skinMat);
-  keeperHead.position.set(-0.2, 1.72, -0.05);
-  shop.add(keeperHead);
+  // Detailed Seated Shopkeeper ("দোকানের গদিতে বসা দোকানদার") inside behind glass counter!
+  const shopkeeper = createSeatedShopkeeperModel(kind, variant, textures, true);
+  shopkeeper.position.set(-0.25, 0.14, 0.08);
+  shop.add(shopkeeper);
 
   // Hanging colorful snack/chips sachets ("দোকানে ঝোলানো চিপস ও শ্যাম্পুর প্যাকেট") in open doorway
   if (kind === 'mudi' || kind === 'recharge') {
@@ -1452,12 +1645,30 @@ export function createDhakaOpenShopModel(
     }
   }
 
+  // Warm dangling Dhaka market tungsten bulb + Bangladesh red-green festive awning strip
+  const dropBulb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.085, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xfef08a })
+  );
+  dropBulb.position.set(0, 2.75, d / 2 + 0.52);
+  shop.add(dropBulb);
+
+  const fairyColors = [0x22c55e, 0xef4444, 0xfacc15, 0x3b82f6];
+  for (let fb = 0; fb < 8; fb++) {
+    const fBulb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.045, 5, 5),
+      new THREE.MeshBasicMaterial({ color: fairyColors[(fb + idx) % fairyColors.length] })
+    );
+    fBulb.position.set(-2.6 + fb * 0.74, 2.9, d / 2 + 1.48);
+    shop.add(fBulb);
+  }
+
   // Slanted Front Awning + Illuminated "খোলা দোকান" Signboard
   const awning = new THREE.Mesh(
     new THREE.BoxGeometry(w + 0.4, 0.12, 1.6),
     new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.55 })
   );
-  awning.position.set(0, 3.12, d / 2 + 0.75);
+  awning.position.set(0, 3.35, d / 2 + 0.75);
   awning.rotation.x = 0.22;
   shop.add(awning);
 
@@ -1465,7 +1676,7 @@ export function createDhakaOpenShopModel(
     new THREE.BoxGeometry(w - 0.2, 1.08, 0.14),
     new THREE.MeshBasicMaterial({ map: textures.openShopSigns[idx] })
   );
-  signMesh.position.set(0, 3.92, d / 2 + 0.16);
+  signMesh.position.set(0, 4.22, d / 2 + 0.16);
   shop.add(signMesh);
 
   // Subtle green sidewalk welcome floor strip indicating open walk-in entrance

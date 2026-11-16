@@ -58,6 +58,7 @@ import {
   createDhakaTinShedBazaarRowModel,
   createDhakaBusCounterPumpModel,
   createDhakaOpenShopModel,
+  createSeatedShopkeeperModel,
   OpenShopKind,
 } from './cityBuildingModels';
 export {
@@ -91,6 +92,7 @@ export interface RickshawRig {
   headlightBulb: THREE.Mesh;
   turboFlameL: THREE.Mesh;
   turboFlameR: THREE.Mesh;
+  invincibleAura: THREE.Mesh;
   driverSlot: THREE.Group;
 }
 
@@ -527,8 +529,26 @@ export function createRickshawModel(textures: ProceduralTexturePack): RickshawRi
   turboFlameR.visible = false;
   chassisTilt.add(turboFlameR);
 
+  // Chai-Break Invincibility Protective Shield Dome (lightweight translucent shell)
+  const auraGeo = new THREE.SphereGeometry(1.75, 16, 12);
+  const auraMat = new THREE.MeshBasicMaterial({
+    color: 0x34d399,
+    transparent: true,
+    opacity: 0.24,
+    wireframe: false,
+    depthWrite: false,
+  });
+  const invincibleAura = new THREE.Mesh(auraGeo, auraMat);
+  invincibleAura.position.set(0, 1.05, -0.05);
+  invincibleAura.scale.set(0.95, 0.88, 1.28);
+  invincibleAura.visible = false;
+  chassisTilt.add(invincibleAura);
+
   const driverSlot = new THREE.Group();
   chassisTilt.add(driverSlot);
+
+  // Realistic Dhaka rickshaw proportions relative to sidewalks, shops & multi-story buildings
+  root.scale.set(0.56, 0.64, 0.64);
 
   return {
     root,
@@ -543,6 +563,7 @@ export function createRickshawModel(textures: ProceduralTexturePack): RickshawRi
     headlightBulb,
     turboFlameL,
     turboFlameR,
+    invincibleAura,
     driverSlot,
   };
 }
@@ -914,17 +935,14 @@ export function createPedestrianModel(seed: number, textures: ProceduralTextureP
 
   const lungi = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.68, 10), lungiMat);
   lungi.position.set(0, 0.54, 0);
-  lungi.castShadow = true;
   root.add(lungi);
 
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.24), shirtMat);
   torso.position.set(0, 1.08, 0);
-  torso.castShadow = true;
   root.add(torso);
 
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 10), skinMat);
   head.position.set(0, 1.48, 0);
-  head.castShadow = true;
   root.add(head);
 
   const legGeo = new THREE.CylinderGeometry(0.06, 0.05, 0.42, 8);
@@ -944,6 +962,8 @@ export function createPedestrianModel(seed: number, textures: ProceduralTextureP
   const armR = new THREE.Mesh(armGeo, skinMat);
   armR.position.set(0.25, 1.06, 0);
   root.add(armR);
+
+  root.scale.setScalar(0.78);
 
   return {
     root,
@@ -992,7 +1012,6 @@ export function createBorkaWomanModel(seed: number, textures: ProceduralTextureP
   // 1. Flowing Flared Abaya Skirt & Embroidered Hem
   const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.33, 0.92, 12), borkaMat);
   skirt.position.set(0, 0.58, 0);
-  skirt.castShadow = true;
   skirt.receiveShadow = true;
   root.add(skirt);
 
@@ -1003,7 +1022,6 @@ export function createBorkaWomanModel(seed: number, textures: ProceduralTextureP
   // 2. Upper Abaya Bodice & Draped Khimar Shawl
   const bodice = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.205, 0.4, 10), borkaMat);
   bodice.position.set(0, 1.15, 0);
-  bodice.castShadow = true;
   root.add(bodice);
 
   const khimarCape = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.255, 0.34, 10), hijabMat);
@@ -1023,7 +1041,6 @@ export function createBorkaWomanModel(seed: number, textures: ProceduralTextureP
   );
   hijabWrap.position.set(0, 0.01, 0.015);
   hijabWrap.rotation.x = 0.24;
-  hijabWrap.castShadow = true;
   headGroup.add(hijabWrap);
 
   const hijabBackDrape = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.1), hijabMat);
@@ -1089,6 +1106,8 @@ export function createBorkaWomanModel(seed: number, textures: ProceduralTextureP
   armR.add(clasp);
   root.add(armR);
 
+  root.scale.setScalar(0.78);
+
   return {
     root,
     legL,
@@ -1104,66 +1123,183 @@ export function createBorkaWomanModel(seed: number, textures: ProceduralTextureP
 }
 
 /**
- * ONEK MANUS: Angry Crowd Chasers waving bamboo lathis
+ * ANGRY SHOPKEEPER CHASER ("ক্ষিপ্ত দোকানদার"):
+ * Spawns in randomized Dhaka shopkeeper attire (panjabi, shirt, t-shirt, waistcoat,
+ * lungi/trouser, optional gamcha/tupi/cap) waving a bamboo stick.
  */
 export function createMobModel(seed: number, textures: ProceduralTexturePack): MobRig {
   const root = new THREE.Group();
-  root.add(createContactShadowMesh(textures.contactShadow, 0.95, 0.95));
+  root.add(createContactShadowMesh(textures.contactShadow, 0.85, 0.85));
 
-  const lungiTex = textures.lungis[seed % textures.lungis.length];
-  const shirtColors = [0xf8fafc, 0xfef08a, 0x38bdf8, 0xfb7185, 0xa7f3d0];
+  const h1 = Math.abs((seed * 2654435761) >>> 0);
+  const h2 = Math.abs(((seed + 17) * 2246822519) >>> 0);
+  const h3 = Math.abs(((seed + 53) * 3266489917) >>> 0);
 
-  const lungiMat = new THREE.MeshStandardMaterial({ map: lungiTex, roughness: 0.75 });
-  const shirtMat = new THREE.MeshStandardMaterial({ color: shirtColors[seed % shirtColors.length], roughness: 0.65 });
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0xc68642, roughness: 0.7 });
+  const outfitStyle = h1 % 4; // 0: Panjabi, 1: Casual Shirt, 2: T-Shirt/Polo, 3: Vest over Fatua
+  const wearsLungi = (h2 % 5) !== 0; // 80% traditional lungi, 20% trouser/pajama
+  const headStyle = h3 % 4; // 0: Gamcha headband, 1: White Tupi, 2: Shoulder gamcha + hair, 3: Cap + hair
+
+  const skinPalette = [0xc68642, 0xd99b78, 0xb5743c, 0x8d5524];
+  const topPalette = [
+    0xf8fafc,
+    0xfef08a,
+    0x38bdf8,
+    0xfb7185,
+    0xa7f3d0,
+    0x15803d,
+    0xd97706,
+    0x1d4ed8,
+    0xe2e8f0,
+    0xb91c1c,
+  ];
+  const pantPalette = [0x1e293b, 0x334155, 0x27272a, 0xf8fafc, 0x451a03];
+  const gamchaColors = [0xdc2626, 0xea580c, 0x059669, 0x991b1b];
+
+  const lungiTex = textures.lungis[h2 % textures.lungis.length];
+  const skinMat = new THREE.MeshStandardMaterial({
+    color: skinPalette[h1 % skinPalette.length],
+    roughness: 0.7,
+  });
+  const topMat = new THREE.MeshStandardMaterial({
+    color: topPalette[h2 % topPalette.length],
+    roughness: 0.68,
+  });
+  const lowerMat = wearsLungi
+    ? new THREE.MeshStandardMaterial({ map: lungiTex, roughness: 0.78 })
+    : new THREE.MeshStandardMaterial({ color: pantPalette[h3 % pantPalette.length], roughness: 0.76 });
   const stickMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.6 });
-  const headbandMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.6 });
+  const gamchaMat = new THREE.MeshStandardMaterial({
+    color: gamchaColors[h1 % gamchaColors.length],
+    roughness: 0.75,
+  });
+  const hairMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.85 });
+  const sandalMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.82 });
 
-  const lungi = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.29, 0.72, 12), lungiMat);
-  lungi.position.set(0, 0.56, 0);
-  lungi.castShadow = true;
-  root.add(lungi);
+  if (wearsLungi) {
+    const lungi = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.28, 0.7, 10), lowerMat);
+    lungi.position.set(0, 0.56, 0);
+    root.add(lungi);
+  } else {
+    const hips = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.26, 0.24), lowerMat);
+    hips.position.set(0, 0.73, 0);
+    root.add(hips);
+  }
 
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.54, 0.26), shirtMat);
+  // Panjabi knee skirt for Panjabi style
+  if (outfitStyle === 0) {
+    const panjabiSkirt = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.44, 10), topMat);
+    panjabiSkirt.position.set(0, 0.72, 0);
+    root.add(panjabiSkirt);
+  }
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.54, 0.26), topMat);
   torso.position.set(0, 1.14, 0);
-  torso.castShadow = true;
   root.add(torso);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), skinMat);
+  // Vest / Waistcoat over Fatua OR shirt pocket/placket detail
+  if (outfitStyle === 3) {
+    const vestMat = new THREE.MeshStandardMaterial({
+      color: h3 % 2 === 0 ? 0x111827 : 0x78350f,
+      roughness: 0.65,
+    });
+    const vest = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.48, 0.28), vestMat);
+    vest.position.set(0, 1.14, 0);
+    root.add(vest);
+  } else if (outfitStyle === 0 || outfitStyle === 1) {
+    const placket = new THREE.Mesh(
+      new THREE.BoxGeometry(0.055, 0.26, 0.02),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6 })
+    );
+    placket.position.set(0, 1.22, 0.135);
+    root.add(placket);
+  }
+
+  if (headStyle === 2 || outfitStyle === 1) {
+    const shoulderGamcha = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.29), gamchaMat);
+    shoulderGamcha.position.set(-0.15, 1.15, 0);
+    shoulderGamcha.rotation.z = 0.07;
+    root.add(shoulderGamcha);
+  }
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.155, 10, 10), skinMat);
   head.position.set(0, 1.56, 0);
-  head.castShadow = true;
   root.add(head);
 
-  const gamcha = new THREE.Mesh(new THREE.CylinderGeometry(0.166, 0.166, 0.06, 12), headbandMat);
-  gamcha.position.set(0, 1.61, 0);
-  root.add(gamcha);
+  if (headStyle === 1) {
+    const tupi = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.135, 0.15, 0.1, 10),
+      new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.72 })
+    );
+    tupi.position.set(0, 1.67, 0);
+    root.add(tupi);
+  } else {
+    const hair = new THREE.Mesh(
+      new THREE.SphereGeometry(0.16, 8, 8, 0, Math.PI * 2, 0, Math.PI * 0.52),
+      hairMat
+    );
+    hair.position.set(0, 1.57, 0);
+    root.add(hair);
+
+    if (headStyle === 0) {
+      const gamchaBand = new THREE.Mesh(new THREE.CylinderGeometry(0.164, 0.164, 0.06, 10), gamchaMat);
+      gamchaBand.position.set(0, 1.61, 0);
+      root.add(gamchaBand);
+    } else if (headStyle === 3) {
+      const capMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.65 });
+      const brim = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.024, 0.14), capMat);
+      brim.position.set(0, 1.61, 0.16);
+      root.add(brim);
+    }
+  }
+
+  // Optional shopkeeper beard
+  if ((h1 % 3) === 0) {
+    const beard = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.13, 8), hairMat);
+    beard.rotation.x = Math.PI;
+    beard.position.set(0, 1.43, 0.095);
+    root.add(beard);
+  }
 
   const legGeo = new THREE.CylinderGeometry(0.065, 0.055, 0.45, 8);
-  const legL = new THREE.Mesh(legGeo, skinMat);
+  const legMat = wearsLungi ? skinMat : lowerMat;
+  const legL = new THREE.Mesh(legGeo, legMat);
   legL.position.set(-0.11, 0.23, 0);
   root.add(legL);
 
-  const legR = new THREE.Mesh(legGeo, skinMat);
+  const legR = new THREE.Mesh(legGeo, legMat);
   legR.position.set(0.11, 0.23, 0);
   root.add(legR);
 
-  const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.048, 0.48, 8), skinMat);
-  armL.position.set(-0.28, 1.14, 0);
+  const shoeGeo = new THREE.BoxGeometry(0.09, 0.06, 0.17);
+  const shoeL = new THREE.Mesh(shoeGeo, sandalMat);
+  shoeL.position.set(0, -0.21, 0.025);
+  legL.add(shoeL);
+  const shoeR = new THREE.Mesh(shoeGeo, sandalMat);
+  shoeR.position.set(0, -0.21, 0.025);
+  legR.add(shoeR);
+
+  const sleeveLMat = outfitStyle === 0 ? topMat : skinMat;
+  const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.048, 0.46, 8), sleeveLMat);
+  armL.position.set(-0.27, 1.14, 0);
   root.add(armL);
 
   const armR = new THREE.Group();
-  armR.position.set(0.28, 1.32, 0);
-  const rightForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.048, 0.48, 8), skinMat);
+  armR.position.set(0.27, 1.32, 0);
+  const rightForearm = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.055, 0.048, 0.46, 8),
+    outfitStyle === 0 ? topMat : skinMat
+  );
   rightForearm.position.set(0, 0.18, 0.08);
   rightForearm.rotation.x = -0.5;
   armR.add(rightForearm);
 
-  const lathi = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.03, 1.15, 8), stickMat);
-  lathi.position.set(0, 0.56, 0.22);
+  const lathi = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.028, 1.12, 8), stickMat);
+  lathi.position.set(0, 0.54, 0.22);
   lathi.rotation.x = -0.35;
-  lathi.castShadow = true;
   armR.add(lathi);
   root.add(armR);
+
+  root.scale.setScalar(0.78);
 
   return {
     root,
@@ -1172,7 +1308,7 @@ export function createMobModel(seed: number, textures: ProceduralTexturePack): M
     armR,
     armL,
     phase: (seed * 1.37) % (Math.PI * 2),
-    speedFactor: 0.92 + (seed % 5) * 0.05,
+    speedFactor: 0.92 + (h2 % 5) * 0.05,
   };
 }
 
@@ -3116,43 +3252,63 @@ export function createDhakaKiteFlock(count = 6): KiteRig[] {
 /**
  * DHAKA 4-LANE AVENUE CENTER MEDIAN DIVIDER & FLOWER PLANTER ("সড়ক বিভাজক ও ফুলের বাগান")
  */
-export function createDhakaMedianDividerModel(textures: ProceduralTexturePack): THREE.Group {
+export function createDhakaMedianDividerModel(
+  textures: ProceduralTexturePack,
+  length = 9.8
+): THREE.Group {
   const divider = new THREE.Group();
   const curbMat = new THREE.MeshStandardMaterial({ map: textures.curb, roughness: 0.78 });
   const soilMat = new THREE.MeshStandardMaterial({ color: 0x3f2e21, roughness: 0.95 });
   const bushMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.78 });
   const bougainvilleaMat = new THREE.MeshStandardMaterial({ color: 0xec4899, roughness: 0.62 });
   const marigoldMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.6 });
+  const railGreenMat = new THREE.MeshStandardMaterial({ color: 0x047857, roughness: 0.5, metalness: 0.35 });
   const bollardMat = new THREE.MeshStandardMaterial({ map: textures.cngChevrons, roughness: 0.5 });
 
-  // Painted yellow-black concrete divider curb (length 8.5m, width 0.56m)
-  const base = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.24, 8.5), curbMat);
-  base.position.set(0, 0.12, 0);
+  // Painted yellow-black concrete New-Jersey divider curb (height 0.34m, width 0.64m)
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.34, length), curbMat);
+  base.position.set(0, 0.17, 0);
   base.receiveShadow = true;
   divider.add(base);
 
-  const soil = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.04, 7.8), soilMat);
-  soil.position.set(0, 0.25, 0);
+  const soil = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, Math.max(2.0, length - 0.8)), soilMat);
+  soil.position.set(0, 0.35, 0);
   divider.add(soil);
 
-  // Bougainvillea & green hedge planters along the median
-  [-2.7, -0.9, 0.9, 2.7].forEach((bz, idx) => {
-    const shrub = new THREE.Mesh(new THREE.DodecahedronGeometry(0.34, 0), bushMat);
-    shrub.position.set(0, 0.44, bz);
+  // Authentic Dhaka Green Steel Anti-Glare Road Divider Railing along center
+  const topRail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, length - 0.6), railGreenMat);
+  topRail.position.set(0, 0.86, 0);
+  divider.add(topRail);
+
+  const postCount = Math.max(3, Math.round(length / 2.2));
+  for (let i = 0; i < postCount; i++) {
+    const pz = -length / 2 + 0.45 + (i / (postCount - 1)) * (length - 0.9);
+    const rPost = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.52, 0.06), railGreenMat);
+    rPost.position.set(0, 0.6, pz);
+    divider.add(rPost);
+  }
+
+  // Bougainvillea & marigold planters tucked symmetrically along the divider
+  const shrubCount = Math.max(3, Math.floor(length / 2.2));
+  for (let i = 0; i < shrubCount; i++) {
+    const bz = -length / 2 + 1.15 + (i / Math.max(1, shrubCount - 1)) * (length - 2.3);
+    const shrub = new THREE.Mesh(new THREE.DodecahedronGeometry(0.32, 0), bushMat);
+    shrub.position.set(0, 0.52, bz);
     divider.add(shrub);
 
     const bloom = new THREE.Mesh(
       new THREE.SphereGeometry(0.14, 6, 6),
-      idx % 2 === 0 ? bougainvilleaMat : marigoldMat
+      i % 2 === 0 ? bougainvilleaMat : marigoldMat
     );
-    bloom.position.set(idx % 2 === 0 ? 0.12 : -0.12, 0.62, bz);
+    bloom.position.set(i % 2 === 0 ? 0.14 : -0.14, 0.72, bz);
     divider.add(bloom);
-  });
+  }
 
-  // Reflective DMP arrow/chevron bollards at divider ends
-  [-4.0, 4.0].forEach((ez) => {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.85, 8), bollardMat);
-    post.position.set(0, 0.54, ez);
+  // Reflective DMP arrow/chevron bullnose bollards at divider ends
+  const endOff = length / 2 - 0.28;
+  [-endOff, endOff].forEach((ez) => {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 0.92, 8), bollardMat);
+    post.position.set(0, 0.66, ez);
     divider.add(post);
   });
 
@@ -3160,7 +3316,130 @@ export function createDhakaMedianDividerModel(textures: ProceduralTexturePack): 
 }
 
 /**
+ * DHAKA U-TURN BAY ROAD MARKINGS & DMP BLUE SIGNPOST ("ইউ-টার্ন মোড়")
+ * Placed inside the 9m gap between concrete divider segments (at +/-28.3m).
+ */
+export function createUTurnBayMarkerModel(textures: ProceduralTexturePack): THREE.Group {
+  const bay = new THREE.Group();
+
+  const uDecalMat = new THREE.MeshStandardMaterial({
+    map: textures.uTurnRoadMark,
+    transparent: true,
+    opacity: 0.94,
+    roughness: 0.7,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+  });
+
+  // Twin curved U-turn arrow decals for both opposing approaches into the bay
+  [-2.15, 2.15].forEach((ux, idx) => {
+    const decal = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 4.4), uDecalMat);
+    decal.rotation.x = -Math.PI / 2;
+    if (idx === 1) decal.rotation.z = Math.PI;
+    decal.position.set(ux, 0.022, 0);
+    bay.add(decal);
+  });
+
+  // DMP Blue Reflective "ইউ-টার্ন / U-TURN" Signboards on both median noses (+/-4.45m)
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.45, metalness: 0.72 });
+  const signMat = new THREE.MeshBasicMaterial({ map: textures.uTurnSign });
+  [-4.45, 4.45].forEach((sz, idx) => {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.75, 6), poleMat);
+    post.position.set(0, 1.38, sz);
+    bay.add(post);
+
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.92, 0.08), signMat);
+    plate.position.set(0, 2.45, sz);
+    if (idx === 1) plate.rotation.y = Math.PI;
+    bay.add(plate);
+  });
+
+  return bay;
+}
+
+/**
+ * ROADSIDE CNG / LEGUNA STAND SIGNPOST ("সিএনজি ও লেগুনা স্ট্যান্ড")
+ */
+export function createCngLegunaStandBoardModel(): THREE.Group {
+  const stand = new THREE.Group();
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x065f46, roughness: 0.5, metalness: 0.4 });
+  const yellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 });
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#064e3b';
+  ctx.fillRect(0, 0, 256, 128);
+  ctx.strokeStyle = '#facc15';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(6, 6, 244, 116);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 26px "Hind Siliguri", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('সিএনজি ও লেগুনা স্ট্যান্ড', 128, 54);
+  ctx.fillStyle = '#fde047';
+  ctx.font = 'bold 18px "Hind Siliguri", sans-serif';
+  ctx.fillText('নির্ধারিত স্টপেজ • ঢাকা', 128, 94);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 3.0, 6), poleMat);
+  pole.position.set(0, 1.5, 0);
+  stand.add(pole);
+
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 0.25, 8), yellowMat);
+  base.position.set(0, 0.125, 0);
+  stand.add(base);
+
+  const board = new THREE.Mesh(
+    new THREE.BoxGeometry(1.38, 0.72, 0.08),
+    new THREE.MeshBasicMaterial({ map: tex })
+  );
+  board.position.set(0, 2.75, 0);
+  stand.add(board);
+
+  return stand;
+}
+
+/**
+ * DHAKA WASA ROADWORK CONES & CAUTION BARRIER ("কাজ চলিতেছে — ওয়াসা")
+ */
+export function createWasaRoadWorkBarricadeModel(textures: ProceduralTexturePack): THREE.Group {
+  const work = new THREE.Group();
+  const coneMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.45 });
+  const stripeMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+  const barrierMat = new THREE.MeshStandardMaterial({ map: textures.cngChevrons, roughness: 0.55 });
+  const legMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.65 });
+
+  // Caution barricade board
+  const board = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.42, 0.08), barrierMat);
+  board.position.set(0, 0.78, 0);
+  work.add(board);
+  [-0.62, 0.62].forEach((lx) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.96, 6), legMat);
+    leg.position.set(lx, 0.48, 0);
+    work.add(leg);
+  });
+
+  // Pair of orange Dhaka traffic cones
+  [-0.95, 0.95].forEach((cx) => {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.62, 8), coneMat);
+    cone.position.set(cx, 0.31, 0.16);
+    work.add(cone);
+
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.12, 8), stripeMat);
+    ring.position.set(cx, 0.32, 0.16);
+    work.add(ring);
+  });
+
+  return work;
+}
+
+/**
  * ICONIC DHAKA TONG CHA-BISCUIT STALL ("রাস্তার ধারের টং চা ও বিস্কুটের দোকান")
+ * Open-front wooden stall with seated Cha-Mama shopkeeper visibly tending stove & jars!
  */
 export function createDhakaTongChaStallModel(textures: ProceduralTexturePack): THREE.Group {
   const tong = new THREE.Group();
@@ -3172,23 +3451,42 @@ export function createDhakaTongChaStallModel(textures: ProceduralTexturePack): T
   const kettleMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.25, metalness: 0.82 });
   const benchMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.65 });
 
-  // Tin-roofed wooden kiosk body
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.95, 2.2), woodMat);
-  cabin.position.set(-0.25, 0.975, 0);
-  cabin.castShadow = true;
-  tong.add(cabin);
+  // Open-front wooden kiosk frame (back wall + side panels + roof, facing +X open to street!)
+  const backWall = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.95, 2.2), woodMat);
+  backWall.position.set(-0.92, 0.975, 0);
+  backWall.castShadow = true;
+  tong.add(backWall);
+
+  [-1.02, 1.02].forEach((sz) => {
+    const sideWall = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.95, 0.14), woodMat);
+    sideWall.position.set(-0.22, 0.975, sz);
+    tong.add(sideWall);
+  });
+
+  // Seated Tea-Stall Owner ("টংয়ের চা-মামা") inside facing road (+X)
+  const tongMama = createSeatedShopkeeperModel('tea_mama', 1, textures, true);
+  tongMama.position.set(-0.34, 0, -0.08);
+  tongMama.rotation.y = Math.PI / 2;
+  tong.add(tongMama);
 
   // Open serving counter facing road (+X)
   const counter = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.88, 2.15), counterMat);
   counter.position.set(0.65, 0.44, 0);
   tong.add(counter);
 
-  // Sloped corrugated tin awning roof
-  const awning = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.08, 2.55), tinMat);
-  awning.position.set(0.25, 2.08, 0);
+  // Sloped corrugated tin awning roof + warm tungsten bulb inside
+  const awning = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.08, 2.55), tinMat);
+  awning.position.set(0.22, 2.08, 0);
   awning.rotation.z = -0.14;
   awning.castShadow = true;
   tong.add(awning);
+
+  const bulb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.07, 7, 7),
+    new THREE.MeshBasicMaterial({ color: 0xfef08a })
+  );
+  bulb.position.set(0.25, 1.82, 0);
+  tong.add(bulb);
 
   // Clear plastic biscuit jars & glowing aluminium tea kettle on counter!
   [-0.55, -0.15, 0.25].forEach((jz, idx) => {
@@ -3215,6 +3513,160 @@ export function createDhakaTongChaStallModel(textures: ProceduralTexturePack): T
   tong.add(bench);
 
   return tong;
+}
+
+/**
+ * INTERACTIVE POWER-UP KIOSK #1: "স্পেশাল চা-ব্রেক" (Chai-Break — Grants Temporary Invincibility Shield)
+ * Vibrant emerald & gold Dhaka roadside tea kiosk facing +Z road edge with samovar, biscuit jars, & dual-sided sign.
+ */
+export function createChaiBreakKioskModel(textures: ProceduralTexturePack): THREE.Group {
+  const kiosk = new THREE.Group();
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0x064e3b, roughness: 0.72 });
+  const counterMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.78 });
+  const goldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.32, metalness: 0.65 });
+  const steelMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.22, metalness: 0.85 });
+  const awningMat = new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.58 });
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0x6ee7b7 });
+  const cupMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.45 });
+
+  // Lower booth frame & wooden counter facing +Z road
+  const backPanel = new THREE.Mesh(new THREE.BoxGeometry(2.3, 2.05, 0.16), baseMat);
+  backPanel.position.set(0, 1.025, -0.82);
+  kiosk.add(backPanel);
+
+  [-1.08, 1.08].forEach((px) => {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 2.15, 7), goldMat);
+    post.position.set(px, 1.075, 0.65);
+    kiosk.add(post);
+  });
+
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(2.32, 0.9, 0.72), counterMat);
+  counter.position.set(0, 0.45, 0.38);
+  kiosk.add(counter);
+
+  // Brass tea samovar, kettle & stacked steaming tea cups
+  const kettle = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.21, 0.34, 10), steelMat);
+  kettle.position.set(-0.62, 1.07, 0.38);
+  kiosk.add(kettle);
+
+  const ember = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.06, 8), glowMat);
+  ember.position.set(-0.62, 0.91, 0.38);
+  kiosk.add(ember);
+
+  for (let c = 0; c < 4; c++) {
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.045, 0.11, 8), cupMat);
+    cup.position.set(0.18 + c * 0.16, 0.96, 0.44);
+    kiosk.add(cup);
+  }
+
+  // Seated Tea-Mama vendor inside facing +Z road
+  const mama = createSeatedShopkeeperModel('tea_mama', 2, textures, true);
+  mama.position.set(0.05, 0, -0.34);
+  kiosk.add(mama);
+
+  // Sloped bright emerald awning + gold fascia bar
+  const awning = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 1.95), awningMat);
+  awning.position.set(0, 2.15, -0.02);
+  awning.rotation.x = 0.14;
+  kiosk.add(awning);
+
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(2.64, 0.14, 0.12), goldMat);
+  trim.position.set(0, 2.02, 0.92);
+  kiosk.add(trim);
+
+  // Prominent dual-sided rooftop signboard ("স্পেশাল চা-ব্রেক")
+  const signMat = new THREE.MeshBasicMaterial({ map: textures.chaiBreakKioskSign });
+  const signBox = new THREE.Mesh(new THREE.BoxGeometry(2.45, 0.88, 0.1), [
+    baseMat,
+    baseMat,
+    baseMat,
+    baseMat,
+    signMat,
+    signMat,
+  ]);
+  signBox.position.set(0, 2.66, 0.35);
+  kiosk.add(signBox);
+
+  return kiosk;
+}
+
+/**
+ * INTERACTIVE POWER-UP KIOSK #2: "মামার ঝালমুড়ি" (Jhal-Muri — Grants Short Speed Boost)
+ * Fiery crimson-orange Dhaka Jhal-Muri push-cart kiosk facing +Z road edge with glass muri box, spice jars & umbrella.
+ */
+export function createJhalMuriKioskModel(textures: ProceduralTexturePack): THREE.Group {
+  const kiosk = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.72 });
+  const cartTrimMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.38, metalness: 0.45 });
+  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.75 });
+  const glassBoxMat = new THREE.MeshStandardMaterial({
+    color: 0xfef9c3,
+    roughness: 0.2,
+    transparent: true,
+    opacity: 0.78,
+  });
+  const muriFillMat = new THREE.MeshStandardMaterial({ color: 0xfde68a, roughness: 0.85 });
+  const canopyRedMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.56 });
+  const chiliMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.48 });
+
+  // Push-cart flatbed + wooden display box + 2 side cart wheels
+  const cartBody = new THREE.Mesh(new THREE.BoxGeometry(2.15, 0.65, 1.05), bodyMat);
+  cartBody.position.set(0, 0.62, 0.12);
+  kiosk.add(cartBody);
+
+  [-1.12, 1.12].forEach((wx) => {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.08, 12), wheelMat);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(wx, 0.32, 0.12);
+    kiosk.add(wheel);
+  });
+
+  // Iconic illuminated Glass Muri Showcase Box filled with crispy puffed rice
+  const muriHeap = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.42, 0.58), muriFillMat);
+  muriHeap.position.set(-0.36, 1.16, 0.15);
+  kiosk.add(muriHeap);
+
+  const glassCase = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.54, 0.68), glassBoxMat);
+  glassCase.position.set(-0.36, 1.22, 0.15);
+  kiosk.add(glassCase);
+
+  // Mixing bowl ("বাটি"), mustard oil bottle & chili/chanachur jars
+  const mixingBowl = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.14, 0.16, 10), cartTrimMat);
+  mixingBowl.position.set(0.55, 1.03, 0.25);
+  kiosk.add(mixingBowl);
+
+  const chiliJar = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.28, 8), chiliMat);
+  chiliJar.position.set(0.84, 1.09, -0.02);
+  kiosk.add(chiliJar);
+
+  // Seated Jhal-Muri Mama vendor behind cart
+  const mama = createSeatedShopkeeperModel('tea_mama', 5, textures, true);
+  mama.position.set(0.15, 0, -0.58);
+  kiosk.add(mama);
+
+  // Striped Umbrella Pole & Canopy
+  const uPole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.05, 6), wheelMat);
+  uPole.position.set(0, 1.68, -0.18);
+  kiosk.add(uPole);
+
+  const uCanopy = new THREE.Mesh(new THREE.ConeGeometry(1.42, 0.52, 8), canopyRedMat);
+  uCanopy.position.set(0, 2.55, -0.18);
+  kiosk.add(uCanopy);
+
+  // Prominent dual-sided signboard ("মামার ঝালমুড়ি")
+  const signMat = new THREE.MeshBasicMaterial({ map: textures.jhalMuriKioskSign });
+  const signBox = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.84, 0.1), [
+    bodyMat,
+    bodyMat,
+    bodyMat,
+    bodyMat,
+    signMat,
+    signMat,
+  ]);
+  signBox.position.set(0, 2.95, 0.24);
+  kiosk.add(signBox);
+
+  return kiosk;
 }
 
 /**
@@ -4120,12 +4572,47 @@ export interface CityCellOpenShopData {
   cooldown: number;
 }
 
+export type VendorKioskKind = 'chai_break' | 'jhal_muri';
+
+export interface CityCellVendorKioskData {
+  kind: VendorKioskKind;
+  localX: number;
+  localZ: number;
+  cooldown: number;
+  beaconGroup: THREE.Group;
+  floatingGem: THREE.Mesh;
+}
+
+export function posMod(n: number, m: number): number {
+  return ((n % m) + m) % m;
+}
+
+/** Signals appear far apart (~every 384m / 4 blocks along each avenue) */
+export function isSignalIntersection(gridX: number, gridZ: number): boolean {
+  return posMod(gridX + gridZ, 4) === 0;
+}
+
+/** U-turn bays appear sparsely (~every 384m / 4 blocks along N-S and E-W roads, on the +28.3m arm) */
+export function hasNsUTurnBay(gridX: number, gridZ: number): boolean {
+  return posMod(gridZ, 4) === 2 && posMod(gridX, 1) === 0;
+}
+
+export function hasEwUTurnBay(gridX: number, gridZ: number): boolean {
+  return posMod(gridX, 4) === 2 && posMod(gridZ, 1) === 0;
+}
+
 export interface CityGridCellResult {
   group: THREE.Group;
   metroGroup: THREE.Group;
+  signalGroup: THREE.Group;
+  nsMedianSolid: THREE.Group;
+  nsMedianUTurn: THREE.Group;
+  ewMedianSolid: THREE.Group;
+  ewMedianUTurn: THREE.Group;
   lightRig: TrafficLightRig;
   stalls: CityCellStallData[];
   openShops: CityCellOpenShopData[];
+  vendorKiosks: CityCellVendorKioskData[];
   lampBulbs: THREE.Mesh[];
   asphaltMats: THREE.MeshStandardMaterial[];
 }
@@ -4160,23 +4647,153 @@ interface SharedCellInfraAssets {
   torsoGeo: THREE.BoxGeometry;
   armGeoShort: THREE.CylinderGeometry;
   buildingProtos: Map<string, THREE.Group>;
+  zebraStopBatch: THREE.Group;
+  nsMedianSolidBatch: THREE.Group;
+  nsMedianUTurnBatch: THREE.Group;
+  ewMedianSolidBatch: THREE.Group;
+  ewMedianUTurnBatch: THREE.Group;
 }
 
 const cellInfraCache = new WeakMap<BatchMaterialCache, SharedCellInfraAssets>();
 
-function createInfraAssets(textures: ProceduralTexturePack): SharedCellInfraAssets {
+function buildMedianVariantBatch(
+  textures: ProceduralTexturePack,
+  axis: 'NS' | 'EW',
+  withUTurnBay: boolean,
+  batchCache?: BatchMaterialCache
+): THREE.Group {
+  const root = new THREE.Group();
+  const yellowLineMat = new THREE.MeshBasicMaterial({ color: 0xeab308 });
+  const solidLineGeo = new THREE.PlaneGeometry(0.16, 33.4);
+  const innerLineGeo = new THREE.PlaneGeometry(0.16, 10.2);
+  const outerLineGeo = new THREE.PlaneGeometry(0.16, 14.0);
+
+  const placeArm = (sign: -1 | 1, hasGap: boolean) => {
+    if (!hasGap) {
+      const solidMed = createDhakaMedianDividerModel(textures, 33.2);
+      if (axis === 'NS') {
+        solidMed.position.set(0, 0, sign * 30.2);
+      } else {
+        solidMed.rotation.y = Math.PI / 2;
+        solidMed.position.set(sign * 30.2, 0, 0);
+      }
+      root.add(solidMed);
+
+      [-0.44, 0.44].forEach((off) => {
+        const line = new THREE.Mesh(solidLineGeo, yellowLineMat);
+        line.rotation.x = -Math.PI / 2;
+        if (axis === 'NS') {
+          line.position.set(off, 0.019, sign * 30.2);
+        } else {
+          line.rotation.z = Math.PI / 2;
+          line.position.set(sign * 30.2, 0.019, off);
+        }
+        root.add(line);
+      });
+    } else {
+      const innerMed = createDhakaMedianDividerModel(textures, 9.8);
+      const outerMed = createDhakaMedianDividerModel(textures, 13.7);
+      const uMarker = createUTurnBayMarkerModel(textures);
+      if (axis === 'NS') {
+        innerMed.position.set(0, 0, sign * 18.9);
+        outerMed.position.set(0, 0, sign * 39.65);
+        uMarker.position.set(0, 0, sign * 28.3);
+      } else {
+        innerMed.rotation.y = Math.PI / 2;
+        innerMed.position.set(sign * 18.9, 0, 0);
+        outerMed.rotation.y = Math.PI / 2;
+        outerMed.position.set(sign * 39.65, 0, 0);
+        uMarker.rotation.y = Math.PI / 2;
+        uMarker.position.set(sign * 28.3, 0, 0);
+      }
+      root.add(innerMed);
+      root.add(outerMed);
+      root.add(uMarker);
+
+      [-0.44, 0.44].forEach((off) => {
+        const lineIn = new THREE.Mesh(innerLineGeo, yellowLineMat);
+        lineIn.rotation.x = -Math.PI / 2;
+        const lineOut = new THREE.Mesh(outerLineGeo, yellowLineMat);
+        lineOut.rotation.x = -Math.PI / 2;
+        if (axis === 'NS') {
+          lineIn.position.set(off, 0.019, sign * 18.9);
+          lineOut.position.set(off, 0.019, sign * 39.65);
+        } else {
+          lineIn.rotation.z = Math.PI / 2;
+          lineIn.position.set(sign * 18.9, 0.019, off);
+          lineOut.rotation.z = Math.PI / 2;
+          lineOut.position.set(sign * 39.65, 0.019, off);
+        }
+        root.add(lineIn);
+        root.add(lineOut);
+      });
+    }
+  };
+
+  // -arm (-30.2) is ALWAYS solid unbroken median; +arm (+28.3/+30.2) toggles between U-turn bay and solid
+  placeArm(-1, false);
+  placeArm(1, withUTurnBay);
+
+  return batchCache ? mergeStaticGroupByMaterial(root, batchCache, false) : root;
+}
+
+function createInfraAssets(
+  textures: ProceduralTexturePack,
+  batchCache?: BatchMaterialCache
+): SharedCellInfraAssets {
+  const zebraStopRoot = new THREE.Group();
+  const whiteLineMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0 });
+  const stopNSGeo = new THREE.PlaneGeometry(15.2, 0.42);
+  [-11.8, 11.8].forEach((stopPos) => {
+    const stopNS = new THREE.Mesh(stopNSGeo, whiteLineMat);
+    stopNS.rotation.x = -Math.PI / 2;
+    stopNS.position.set(0, 0.019, stopPos);
+    zebraStopRoot.add(stopNS);
+
+    const stopEW = new THREE.Mesh(stopNSGeo, whiteLineMat);
+    stopEW.rotation.x = -Math.PI / 2;
+    stopEW.rotation.z = Math.PI / 2;
+    stopEW.position.set(stopPos, 0.019, 0);
+    zebraStopRoot.add(stopEW);
+  });
+
+  const zebraMat = new THREE.MeshStandardMaterial({
+    map: textures.zebraCrossing,
+    roughness: 0.75,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+  });
+  [-9.5, 9.5].forEach((zz) => {
+    const zNS = new THREE.Mesh(new THREE.PlaneGeometry(15.2, 3.6), zebraMat);
+    zNS.rotation.x = -Math.PI / 2;
+    zNS.position.set(0, 0.02, zz);
+    zebraStopRoot.add(zNS);
+
+    const zEW = new THREE.Mesh(new THREE.PlaneGeometry(15.2, 3.6), zebraMat);
+    zEW.rotation.x = -Math.PI / 2;
+    zEW.rotation.z = Math.PI / 2;
+    zEW.position.set(zz, 0.02, 0);
+    zebraStopRoot.add(zEW);
+  });
+
+  const zebraStopBatch = batchCache
+    ? mergeStaticGroupByMaterial(zebraStopRoot, batchCache, false)
+    : zebraStopRoot;
+
   return {
     asphaltMat: new THREE.MeshStandardMaterial({
       map: textures.asphalt,
       bumpMap: textures.asphaltBump,
       bumpScale: 0.035,
-      roughness: 0.84,
-      metalness: 0.06,
+      roughness: 0.86,
+      metalness: 0.04,
+      envMapIntensity: 0.14,
     }),
     centerAsphaltMat: new THREE.MeshStandardMaterial({
-      color: 0x242a33,
-      roughness: 0.86,
-      metalness: 0.06,
+      color: 0x262d37,
+      roughness: 0.88,
+      metalness: 0.04,
+      envMapIntensity: 0.14,
     }),
     centerGeo: new THREE.PlaneGeometry(16, 16),
     armGeo: new THREE.PlaneGeometry(16, 40),
@@ -4213,6 +4830,11 @@ function createInfraAssets(textures: ProceduralTexturePack): SharedCellInfraAsse
     torsoGeo: new THREE.BoxGeometry(0.42, 0.6, 0.24),
     armGeoShort: new THREE.CylinderGeometry(0.05, 0.05, 0.55, 6),
     buildingProtos: new Map<string, THREE.Group>(),
+    zebraStopBatch,
+    nsMedianSolidBatch: buildMedianVariantBatch(textures, 'NS', false, batchCache),
+    nsMedianUTurnBatch: buildMedianVariantBatch(textures, 'NS', true, batchCache),
+    ewMedianSolidBatch: buildMedianVariantBatch(textures, 'EW', false, batchCache),
+    ewMedianUTurnBatch: buildMedianVariantBatch(textures, 'EW', true, batchCache),
   };
 }
 
@@ -4234,7 +4856,7 @@ export function createCityGridCell(
   if (batchCache) {
     infra = cellInfraCache.get(batchCache);
     if (!infra) {
-      infra = createInfraAssets(textures);
+      infra = createInfraAssets(textures, batchCache);
       cellInfraCache.set(batchCache, infra);
     }
   } else {
@@ -4283,37 +4905,25 @@ export function createCityGridCell(
   });
 
   if (!existingTemplate) {
-    // 1b. Crisp Road Lane Markings (Yellow Center Dashes, White Edge & Stop Lines)
-    const yellowDashMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
+    // 1b. Crisp 4-Lane Divided Road Markings (White 2-Lane Dashes & Curb Edge Lines; Medians & Stop/Zebra are toggleable!)
     const whiteLineMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0 });
-    const dashNSGeo = new THREE.PlaneGeometry(0.24, 4.4);
+    const laneDashGeo = new THREE.PlaneGeometry(0.18, 4.4);
     const edgeNSGeo = new THREE.PlaneGeometry(0.18, 36.2);
-    const stopNSGeo = new THREE.PlaneGeometry(15.2, 0.42);
 
+    // 2+2 Carriageway Dashed White Lane Splitters at +/-3.85m
     [-44, -36, -28, -20, 20, 28, 36, 44].forEach((pos) => {
-      const dashNS = new THREE.Mesh(dashNSGeo, yellowDashMat);
-      dashNS.rotation.x = -Math.PI / 2;
-      dashNS.position.set(0, 0.018, pos);
-      staticBatchRoot.add(dashNS);
+      [-3.85, 3.85].forEach((laneX) => {
+        const dashNS = new THREE.Mesh(laneDashGeo, whiteLineMat);
+        dashNS.rotation.x = -Math.PI / 2;
+        dashNS.position.set(laneX, 0.019, pos);
+        staticBatchRoot.add(dashNS);
 
-      const dashEW = new THREE.Mesh(dashNSGeo, yellowDashMat);
-      dashEW.rotation.x = -Math.PI / 2;
-      dashEW.rotation.z = Math.PI / 2;
-      dashEW.position.set(pos, 0.018, 0);
-      staticBatchRoot.add(dashEW);
-    });
-
-    [-11.8, 11.8].forEach((stopPos) => {
-      const stopNS = new THREE.Mesh(stopNSGeo, whiteLineMat);
-      stopNS.rotation.x = -Math.PI / 2;
-      stopNS.position.set(0, 0.019, stopPos);
-      staticBatchRoot.add(stopNS);
-
-      const stopEW = new THREE.Mesh(stopNSGeo, whiteLineMat);
-      stopEW.rotation.x = -Math.PI / 2;
-      stopEW.rotation.z = Math.PI / 2;
-      stopEW.position.set(stopPos, 0.019, 0);
-      staticBatchRoot.add(stopEW);
+        const dashEW = new THREE.Mesh(laneDashGeo, whiteLineMat);
+        dashEW.rotation.x = -Math.PI / 2;
+        dashEW.rotation.z = Math.PI / 2;
+        dashEW.position.set(pos, 0.019, laneX);
+        staticBatchRoot.add(dashEW);
+      });
     });
 
     ([-1, 1] as const).forEach((s) => {
@@ -4629,7 +5239,13 @@ export function createCityGridCell(
           }
 
           bMesh = proto.clone();
-          bMesh.scale.set(baseScale, baseScale * heightStretch, baseScale);
+          const archHeightBoost = isBackRow ? 1.56 : 1.38;
+          const footprintScale = Math.min(baseScale * 1.06, 0.92);
+          bMesh.scale.set(
+            footprintScale,
+            footprintScale * heightStretch * archHeightBoost,
+            footprintScale
+          );
           if (isBackRow) {
             bMesh.traverse((obj) => {
               if ((obj as THREE.Mesh).isMesh) {
@@ -4802,26 +5418,6 @@ export function createCityGridCell(
     const telecomCorner = createDhakaSkylineTelecomTowerModel();
     telecomCorner.position.set(cellIndex % 2 === 0 ? 35.8 : -35.8, 17.5, cellIndex % 2 === 0 ? -35.8 : 35.8);
     staticBatchRoot.add(telecomCorner);
-
-    // 4-Way Zebra Crossings (batched inside staticBatchRoot)
-    const zebraMat = new THREE.MeshStandardMaterial({
-      map: textures.zebraCrossing,
-      roughness: 0.75,
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
-    });
-    [-9.5, 9.5].forEach((zz) => {
-      const zNS = new THREE.Mesh(new THREE.PlaneGeometry(15.2, 3.6), zebraMat);
-      zNS.rotation.x = -Math.PI / 2;
-      zNS.position.set(0, 0.02, zz);
-      staticBatchRoot.add(zNS);
-
-      const zEW = new THREE.Mesh(new THREE.PlaneGeometry(15.2, 3.6), zebraMat);
-      zEW.rotation.x = -Math.PI / 2;
-      zEW.rotation.z = Math.PI / 2;
-      zEW.position.set(zz, 0.02, 0);
-      staticBatchRoot.add(zEW);
-    });
   }
 
   // Procedural Sidewalk Population Script:
@@ -4888,6 +5484,10 @@ export function createCityGridCell(
     return head;
   };
 
+  // 3. Central 4-Way Traffic Signal Gantry, Police Island, Stop Lines & Zebra Crossings (grouped in `signalGroup` so distant signals toggle cleanly!)
+  const signalGroup = new THREE.Group();
+  signalGroup.add(infra.zebraStopBatch.clone());
+
   const gantryGroup = new THREE.Group();
   gantryGroup.position.set(0, 0, 8.6);
   const pole = new THREE.Mesh(infra.poleGeo, metalMat);
@@ -4904,7 +5504,7 @@ export function createCityGridCell(
   gantryGroup.add(buildSignalHead(3.6, 5.6, 0.22, 0));
   gantryGroup.add(buildSignalHead(-3.6, 5.6, -0.22, Math.PI));
   gantryGroup.add(buildSignalHead(3.6, 5.6, -0.22, Math.PI));
-  group.add(gantryGroup);
+  signalGroup.add(gantryGroup);
 
   // Police Island cleanly seated ON the corner sidewalk (-10.1, 0, 10.1) — clear of road lanes
   const policeIsland = new THREE.Group();
@@ -4929,9 +5529,19 @@ export function createCityGridCell(
   armMesh.rotation.z = -Math.PI / 4;
   policeArmGroup.add(armMesh);
   policeIsland.add(policeArmGroup);
-  group.add(policeIsland);
+  signalGroup.add(policeIsland);
+  group.add(signalGroup);
 
-  // 4. Overhead Dhaka Metro Rail Viaduct & Static Urban Batch (cached & cloned across 4 templates)
+  // 3b. Dynamic Toggleable Road Center Dividers & Sparse U-Turn Bays (cloned from shared pre-batched infrastructure)
+  const nsMedianSolid = infra.nsMedianSolidBatch.clone();
+  const nsMedianUTurn = infra.nsMedianUTurnBatch.clone();
+  const ewMedianSolid = infra.ewMedianSolidBatch.clone();
+  const ewMedianUTurn = infra.ewMedianUTurnBatch.clone();
+  nsMedianUTurn.visible = false;
+  ewMedianUTurn.visible = false;
+  group.add(nsMedianSolid, nsMedianUTurn, ewMedianSolid, ewMedianUTurn);
+
+  // 4. Overhead Real Dhaka Metro Rail (MRT-6) Single Central T-Pier Portal Columns, Dual Box-Girder Viaduct & OHE Catenary
   let metroGroup: THREE.Group;
   if (existingTemplate) {
     metroGroup = existingTemplate.metroBatch.clone();
@@ -4939,40 +5549,123 @@ export function createCityGridCell(
     group.add(existingTemplate.staticBatch.clone());
   } else {
     const rawMetroGroup = new THREE.Group();
-    const deckY = 9.6;
-    const concreteMat = new THREE.MeshStandardMaterial({ color: 0x717d8c, roughness: 0.85 });
-    const metroBox = new THREE.Mesh(new THREE.BoxGeometry(8.2, 1.3, 96.0), concreteMat);
-    metroBox.position.set(0, deckY, 0);
-    rawMetroGroup.add(metroBox);
-
+    const deckY = 9.85;
+    const concreteMat = new THREE.MeshStandardMaterial({ color: 0x7b8694, roughness: 0.84 });
+    const darkConcreteMat = new THREE.MeshStandardMaterial({ color: 0x56606d, roughness: 0.88 });
     const greenAccentMat = new THREE.MeshStandardMaterial({ color: 0x047857, roughness: 0.45 });
-    [-4.0, 4.0].forEach((bx) => {
-      const accent = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.22, 96.0), greenAccentMat);
-      accent.position.set(bx, deckY + 0.85, 0);
-      rawMetroGroup.add(accent);
+    const redAccentMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.45 });
+    const trackBedMat = new THREE.MeshStandardMaterial({ color: 0x28313d, roughness: 0.88 });
+    const oheSteelMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5, metalness: 0.72 });
+    const catenaryWireMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+    const chevronMat = new THREE.MeshStandardMaterial({ map: textures.cngChevrons, roughness: 0.55 });
+    const badgeMat = new THREE.MeshBasicMaterial({ map: textures.metroPillarBadge });
+
+    // Segmental Pre-Cast Box-Girder Upper Viaduct Deck + Tapered Underside Spine (y = 9.15 .. 10.35m)
+    const upperDeck = new THREE.Mesh(new THREE.BoxGeometry(8.5, 0.65, 96.0), concreteMat);
+    upperDeck.position.set(0, deckY + 0.15, 0);
+    upperDeck.castShadow = true;
+    rawMetroGroup.add(upperDeck);
+
+    const lowerSpine = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.9, 96.0), darkConcreteMat);
+    lowerSpine.position.set(0, deckY - 0.55, 0);
+    lowerSpine.castShadow = true;
+    rawMetroGroup.add(lowerSpine);
+
+    // Bangladesh Flag Green & Red Architectural Acoustic Parapets + Dual Track Rail Beds
+    [-4.25, 4.25].forEach((bx) => {
+      const parapet = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.92, 96.0), concreteMat);
+      parapet.position.set(bx, deckY + 0.82, 0);
+      rawMetroGroup.add(parapet);
+
+      const greenBand = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.24, 96.0), greenAccentMat);
+      greenBand.position.set(bx, deckY + 1.05, 0);
+      rawMetroGroup.add(greenBand);
+
+      const redBand = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 96.0), redAccentMat);
+      redBand.position.set(bx, deckY + 0.78, 0);
+      rawMetroGroup.add(redBand);
     });
 
-    [-44, -24, 24, 44].forEach((pz, pIdx) => {
-      [-8.95, 8.95].forEach((px, xIdx) => {
-        const pier = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.7, deckY, 8), concreteMat);
-        pier.position.set(px, deckY / 2, pz);
-        rawMetroGroup.add(pier);
+    [-2.0, 2.0].forEach((tx) => {
+      const trackSlab = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.12, 96.0), trackBedMat);
+      trackSlab.position.set(tx, deckY + 0.5, 0);
+      rawMetroGroup.add(trackSlab);
+    });
 
-        // Iconic Dhaka Metro Pillar Posters plastered around concrete pier base (Election + Street posters!)
-        const useElectionOnPier = (pIdx + xIdx) % 2 === 0;
-        const posterTex = useElectionOnPier
-          ? textures.electionPosters[(cellIndex + pIdx + xIdx) % textures.electionPosters.length]
-          : textures.bangladeshiPosters[(cellIndex + pIdx + xIdx) % textures.bangladeshiPosters.length];
-        const pWrap = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.68, 0.71, 1.85, 8, 1, true),
-          new THREE.MeshStandardMaterial({ map: posterTex, roughness: 0.72 })
-        );
-        pWrap.position.set(px, 2.05, pz);
-        rawMetroGroup.add(pWrap);
+    // Overhead OHE Electrification Portal Gantries & Twin Catenary Contact Wires
+    [-40, -16, 16, 40].forEach((gz) => {
+      [-4.1, 4.1].forEach((mx) => {
+        const oheMast = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3.2, 0.16), oheSteelMat);
+        oheMast.position.set(mx, deckY + 2.2, gz);
+        rawMetroGroup.add(oheMast);
       });
-      const crossBeam = new THREE.Mesh(new THREE.BoxGeometry(18.4, 0.9, 1.6), concreteMat);
-      crossBeam.position.set(0, deckY - 0.5, pz);
-      rawMetroGroup.add(crossBeam);
+      const oheBeam = new THREE.Mesh(new THREE.BoxGeometry(8.4, 0.16, 0.16), oheSteelMat);
+      oheBeam.position.set(0, deckY + 3.7, gz);
+      rawMetroGroup.add(oheBeam);
+    });
+
+    [-2.0, 2.0].forEach((wx) => {
+      const wire = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 96.0), catenaryWireMat);
+      wire.position.set(wx, deckY + 3.52, 0);
+      rawMetroGroup.add(wire);
+    });
+
+    // REAL MRT-6 SINGLE CENTRAL CONCRETE T-PIERS on Road Center Divider (cleanly avoiding U-Turn bays at +/-28.3!)
+    [-40.5, -19.0, 19.0, 40.5].forEach((pz, pIdx) => {
+      // 1. Reinforced Concrete Jersey Crash Plinth with Hazard Chevrons & MRT-6 Pier Plate
+      const plinthBase = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.95, 2.35), darkConcreteMat);
+      plinthBase.position.set(0, 0.475, pz);
+      plinthBase.castShadow = true;
+      plinthBase.receiveShadow = true;
+      rawMetroGroup.add(plinthBase);
+
+      const chevronCollar = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.34, 2.42), chevronMat);
+      chevronCollar.position.set(0, 0.24, pz);
+      rawMetroGroup.add(chevronCollar);
+
+      // "ঢাকা মেট্রো-রেল · MRT-6" identification plate facing drivers on left & right lanes
+      [-0.73, 0.73].forEach((bx, sideI) => {
+        const badgePlate = new THREE.Mesh(new THREE.PlaneGeometry(1.85, 0.76), badgeMat);
+        badgePlate.position.set(bx, 0.62, pz);
+        badgePlate.rotation.y = sideI === 0 ? -Math.PI / 2 : Math.PI / 2;
+        rawMetroGroup.add(badgePlate);
+      });
+
+      // 2. Massive Fluted Octagonal/Chamfered Central Pier Trunk (y = 0.95 .. 7.95m)
+      const pierTrunk = new THREE.Mesh(new THREE.BoxGeometry(1.12, 7.05, 1.52), concreteMat);
+      pierTrunk.position.set(0, 4.475, pz);
+      pierTrunk.castShadow = true;
+      pierTrunk.receiveShadow = true;
+      rawMetroGroup.add(pierTrunk);
+
+      const chamferCollar = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.45, 1.64), darkConcreteMat);
+      chamferCollar.position.set(0, 1.05, pz);
+      rawMetroGroup.add(chamferCollar);
+
+      // Iconic Dhaka Metro Pillar Election & Street Posters wrapped around lower pier trunk!
+      const posterTex =
+        pIdx % 2 === 0
+          ? textures.electionPosters[(cellIndex + pIdx) % textures.electionPosters.length]
+          : textures.bangladeshiPosters[(cellIndex + pIdx) % textures.bangladeshiPosters.length];
+      const pWrap = new THREE.Mesh(
+        new THREE.BoxGeometry(1.16, 1.85, 1.56),
+        new THREE.MeshStandardMaterial({ map: posterTex, roughness: 0.72 })
+      );
+      pWrap.position.set(0, 2.25, pz);
+      rawMetroGroup.add(pWrap);
+
+      // 3. Sculptural Flared V-Shaped Hammerhead T-Pier Cap (spanning full 8.4m viaduct width!)
+      const capCore = new THREE.Mesh(new THREE.BoxGeometry(8.5, 1.15, 2.05), concreteMat);
+      capCore.position.set(0, deckY - 1.32, pz);
+      capCore.castShadow = true;
+      rawMetroGroup.add(capCore);
+
+      [-2.35, 2.35].forEach((wx) => {
+        const flareWing = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.72, 1.82), darkConcreteMat);
+        flareWing.position.set(wx, deckY - 1.75, pz);
+        flareWing.rotation.z = wx > 0 ? 0.24 : -0.24;
+        rawMetroGroup.add(flareWing);
+      });
     });
 
     metroGroup = mergeStaticGroupByMaterial(rawMetroGroup, batchCache, false);
@@ -5076,19 +5769,21 @@ export function createCityGridCell(
     campEW.rotation.y = 0;
     staticBatchRoot.add(campEW);
 
-    // Road Center Median Flowerbed & Reflective DMP Dividers ("সড়ক বিভাজক ও ফুলের বাগান")
-    [-22.5, -38.0, 22.5, 38.0].forEach((mPos) => {
-      const medNS = createDhakaMedianDividerModel(textures);
-      medNS.position.set(0, 0, mPos);
-      staticBatchRoot.add(medNS);
+    // (Center concrete median dividers & sparse U-Turn bays are attached via shared toggleable batches above)
 
-      const medEW = createDhakaMedianDividerModel(textures);
-      medEW.rotation.y = Math.PI / 2;
-      medEW.position.set(mPos, 0, 0);
-      staticBatchRoot.add(medEW);
-    });
+    // Dhaka City Roadside Atmosphere: CNG/Leguna Stand Poles & WASA Roadwork Barricades
+    const cngStand = createCngLegunaStandBoardModel();
+    cngStand.position.set(-9.15, 0.26, -15.6);
+    staticBatchRoot.add(cngStand);
 
-    // Iconic Dhaka Tong Cha-Biscuit Stalls ("টং দোকান") tucked on sidewalk corners
+    if (cellIndex % 2 === 0) {
+      const wasaWork = createWasaRoadWorkBarricadeModel(textures);
+      wasaWork.position.set(8.65, 0.26, 26.5);
+      wasaWork.rotation.y = -Math.PI / 2;
+      staticBatchRoot.add(wasaWork);
+    }
+
+    // Iconic Dhaka Tong Cha-Biscuit Stalls ("টং দোকান" with seated Cha-Mama) tucked on sidewalk corners
     const tongNS = createDhakaTongChaStallModel(textures);
     tongNS.position.set(-10.85, 0.26, -38.5);
     staticBatchRoot.add(tongNS);
@@ -5141,6 +5836,28 @@ export function createCityGridCell(
       staticBatchRoot.add(built.mesh);
     });
 
+    // Interactive Street Vendor Power-Up Kiosks ("স্পেশাল চা-ব্রেক" & "মামার ঝালমুড়ি") facing curb edge
+    const interactiveKioskSpots: Array<{
+      kind: VendorKioskKind;
+      x: number;
+      z: number;
+      rotY: number;
+    }> = [
+      { kind: 'chai_break', x: 9.85, z: 30.8, rotY: -Math.PI / 2 },
+      { kind: 'jhal_muri', x: -9.85, z: -33.8, rotY: Math.PI / 2 },
+      { kind: 'chai_break', x: -30.8, z: 9.85, rotY: Math.PI },
+      { kind: 'jhal_muri', x: -32.2, z: -9.85, rotY: 0 },
+    ];
+    interactiveKioskSpots.forEach((ks) => {
+      const kMesh =
+        ks.kind === 'chai_break'
+          ? createChaiBreakKioskModel(textures)
+          : createJhalMuriKioskModel(textures);
+      kMesh.position.set(ks.x, 0.26, ks.z);
+      kMesh.rotation.y = ks.rotY;
+      staticBatchRoot.add(kMesh);
+    });
+
     const batchedStatic = mergeStaticGroupByMaterial(staticBatchRoot, batchCache, false);
     group.add(batchedStatic);
 
@@ -5166,6 +5883,53 @@ export function createCityGridCell(
     localZ: lz,
     cooldown: 0,
   }));
+
+  // Register Interactive Street Vendor Power-Up Kiosks & lightweight glowing road-shoulder beacons
+  const kioskRingGeo = new THREE.RingGeometry(0.95, 1.35, 18);
+  const kioskGemGeo = new THREE.OctahedronGeometry(0.32, 0);
+  const chaiBeaconMat = new THREE.MeshBasicMaterial({
+    color: 0x34d399,
+    transparent: true,
+    opacity: 0.78,
+    side: THREE.DoubleSide,
+  });
+  const muriBeaconMat = new THREE.MeshBasicMaterial({
+    color: 0xf97316,
+    transparent: true,
+    opacity: 0.82,
+    side: THREE.DoubleSide,
+  });
+
+  const kioskSpecs: Array<{ kind: VendorKioskKind; x: number; z: number; roadX: number; roadZ: number }> = [
+    { kind: 'chai_break', x: 9.85, z: 30.8, roadX: 6.95, roadZ: 30.8 },
+    { kind: 'jhal_muri', x: -9.85, z: -33.8, roadX: -6.95, roadZ: -33.8 },
+    { kind: 'chai_break', x: -30.8, z: 9.85, roadX: -30.8, roadZ: 6.95 },
+    { kind: 'jhal_muri', x: -32.2, z: -9.85, roadX: -32.2, roadZ: -6.95 },
+  ];
+
+  const vendorKiosks: CityCellVendorKioskData[] = kioskSpecs.map((ks) => {
+    const bMat = ks.kind === 'chai_break' ? chaiBeaconMat : muriBeaconMat;
+    const beaconGroup = new THREE.Group();
+
+    const roadRing = new THREE.Mesh(kioskRingGeo, bMat);
+    roadRing.rotation.x = -Math.PI / 2;
+    roadRing.position.set(ks.roadX, 0.045, ks.roadZ);
+    beaconGroup.add(roadRing);
+
+    const floatingGem = new THREE.Mesh(kioskGemGeo, bMat);
+    floatingGem.position.set(ks.x, 3.82, ks.z);
+    beaconGroup.add(floatingGem);
+
+    group.add(beaconGroup);
+    return {
+      kind: ks.kind,
+      localX: ks.x,
+      localZ: ks.z,
+      cooldown: 0,
+      beaconGroup,
+      floatingGem,
+    };
+  });
 
   const lightRig: TrafficLightRig = {
     root: group,
@@ -5194,5 +5958,19 @@ export function createCityGridCell(
   };
 
   lightRig.setSignal('RED');
-  return { group, metroGroup, lightRig, stalls, openShops, lampBulbs, asphaltMats };
+  return {
+    group,
+    metroGroup,
+    signalGroup,
+    nsMedianSolid,
+    nsMedianUTurn,
+    ewMedianSolid,
+    ewMedianUTurn,
+    lightRig,
+    stalls,
+    openShops,
+    vendorKiosks,
+    lampBulbs,
+    asphaltMats,
+  };
 }

@@ -68,12 +68,10 @@ export function createDhakaCarModel(
   const paintColor = bodyColors[v];
   const isTaxi = v === 3;
 
-  const paintMat = new THREE.MeshPhysicalMaterial({
+  const paintMat = new THREE.MeshStandardMaterial({
     color: paintColor,
-    roughness: 0.24,
-    metalness: 0.36,
-    clearcoat: 0.65,
-    clearcoatRoughness: 0.18,
+    roughness: 0.22,
+    metalness: 0.42,
   });
   const glassMat = new THREE.MeshStandardMaterial({
     color: 0x0f172a,
@@ -246,5 +244,6 @@ export function createDhakaCarModel(
     });
   });
 
+  car.scale.setScalar(0.82);
   return car;
 }

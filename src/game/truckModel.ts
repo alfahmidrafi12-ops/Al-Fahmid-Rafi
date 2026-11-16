@@ -384,5 +384,6 @@ export function createDhakaTruckModel(
     truck.add(mudflap);
   });
 
+  root.scale.setScalar(0.84);
   return root;
 }

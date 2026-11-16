@@ -658,5 +658,6 @@ export function createLegunaModel(textures: ProceduralTexturePack): THREE.Group 
     lungi: lungi,
   });
 
+  root.scale.setScalar(0.82);
   return root;
 }

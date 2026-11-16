@@ -44,6 +44,13 @@ export interface ProceduralTexturePack {
   openShopSigns: THREE.CanvasTexture[];
   electionPosters: THREE.CanvasTexture[];
   electionPosterRope: THREE.CanvasTexture;
+  npcScoldBubbles: THREE.CanvasTexture[];
+  vehicleScoldBubbles: THREE.CanvasTexture[];
+  uTurnRoadMark: THREE.CanvasTexture;
+  uTurnSign: THREE.CanvasTexture;
+  metroPillarBadge: THREE.CanvasTexture;
+  chaiBreakKioskSign: THREE.CanvasTexture;
+  jhalMuriKioskSign: THREE.CanvasTexture;
   disposeAll: () => void;
 }
 
@@ -125,11 +132,12 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
     rbCtx.fillRect(rx * 0.5, ry * 0.5, 2, 2);
   }
 
-  // Worn tire rut tracks in Dhaka left & right multi-vehicle lanes
-  rCtx.fillStyle = 'rgba(14, 17, 22, 0.42)';
-  rCtx.fillRect(88, 0, 80, 512);
-  rCtx.fillRect(214, 0, 84, 512);
-  rCtx.fillRect(344, 0, 80, 512);
+  // Worn tire rut tracks across all 4 distinct lanes (2 inbound + 2 outbound)
+  rCtx.fillStyle = 'rgba(14, 17, 22, 0.40)';
+  rCtx.fillRect(46, 0, 56, 512);
+  rCtx.fillRect(156, 0, 58, 512);
+  rCtx.fillRect(298, 0, 58, 512);
+  rCtx.fillRect(410, 0, 56, 512);
 
   // Authentic cold-mix bitumen repair patches + hairline tarmac cracks
   rCtx.fillStyle = '#1b1f26';
@@ -154,18 +162,22 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   rCtx.lineTo(392, 326);
   rCtx.stroke();
 
-  // Slightly weathered White edge lines
-  rCtx.fillStyle = '#d4dce6';
-  rCtx.fillRect(22, 0, 7, 512);
-  rCtx.fillRect(483, 0, 7, 512);
+  // Slightly weathered White curb edge lines
+  rCtx.fillStyle = '#e2e8f0';
+  rCtx.fillRect(18, 0, 7, 512);
+  rCtx.fillRect(487, 0, 7, 512);
 
-  // Bold Dhaka Yellow dashed center dividers with reflective cat's-eye studs
-  for (let y = 20; y < 512; y += 128) {
-    rCtx.fillStyle = '#eab308';
-    rCtx.fillRect(249, y, 14, 72);
-    rCtx.fillStyle = '#fef08a';
-    rCtx.fillRect(253, y + 84, 6, 8);
+  // 4-Lane Dashed White Carriageway Lane Dividers (splits each 2-lane side cleanly!)
+  for (let y = 16; y < 512; y += 128) {
+    rCtx.fillStyle = '#f1f5f9';
+    rCtx.fillRect(126, y, 8, 68);
+    rCtx.fillRect(378, y, 8, 68);
   }
+
+  // Solid Double Yellow Center Median Lines framing the center road divider
+  rCtx.fillStyle = '#eab308';
+  rCtx.fillRect(243, 0, 7, 512);
+  rCtx.fillRect(262, 0, 7, 512);
 
   const asphalt = finalizeColorTexture(roadCanvas, maxAnisotropy, 1, 8);
   const asphaltBump = finalizeDataTexture(roadBumpCanvas, maxAnisotropy, 1, 8);
@@ -2288,6 +2300,265 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
   const electionPosterRope = finalizeColorTexture(eRopeCanvas, maxAnisotropy, 1, 1);
   allTextures.push(electionPosterRope);
 
+  // 35. COMIC BANGLA SCOLD / GALAGALI SPEECH BUBBLES (NPCs & Drivers) (512x176 transparent)
+  const buildScoldBubbleTex = (line: string, accentColor: string, tagText: string): THREE.CanvasTexture => {
+    const can = document.createElement('canvas');
+    can.width = 512;
+    can.height = 176;
+    const ctx = can.getContext('2d')!;
+    ctx.clearRect(0, 0, 512, 176);
+
+    const bx = 18;
+    const by = 14;
+    const bw = 476;
+    const bh = 114;
+    const rad = 28;
+
+    // Soft drop shadow
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.42)';
+    ctx.beginPath();
+    ctx.roundRect(bx + 4, by + 6, bw, bh, rad);
+    ctx.fill();
+
+    // Comic bubble body + downward pointer triangle
+    ctx.fillStyle = '#fffbeb';
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 6;
+
+    ctx.beginPath();
+    ctx.moveTo(bx + rad, by);
+    ctx.lineTo(bx + bw - rad, by);
+    ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + rad);
+    ctx.lineTo(bx + bw, by + bh - rad);
+    ctx.quadraticCurveTo(bx + bw, by + bh, bx + bw - rad, by + bh);
+    ctx.lineTo(282, by + bh);
+    ctx.lineTo(256, by + bh + 34);
+    ctx.lineTo(230, by + bh);
+    ctx.lineTo(bx + rad, by + bh);
+    ctx.quadraticCurveTo(bx, by + bh, bx, by + bh - rad);
+    ctx.lineTo(bx, by + rad);
+    ctx.quadraticCurveTo(bx, by, bx + rad, by);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Top accent pill tag inside bubble
+    ctx.fillStyle = accentColor;
+    ctx.beginPath();
+    ctx.roundRect(bx + 18, by + 12, 152, 26, 8);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 16px "Hind Siliguri", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(tagText, bx + 94, by + 25);
+
+    // Main bold Bengali scold / galagali line
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '900 34px "Hind Siliguri", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(line, 256, by + 76, bw - 34);
+
+    const tex = finalizeColorTexture(can, maxAnisotropy, 1, 1);
+    allTextures.push(tex);
+    return tex;
+  };
+
+  const npcScoldLines: Array<[string, string, string]> = [
+    ['আবে অন্ধ নাকি ব্যাটা?!', '#dc2626', 'পথচারী ক্ষিপ্ত'],
+    ['চোখ কি মাথায় তুলছস?!', '#b91c1c', 'সাবধান!'],
+    ['মামা মেরে দিলি রে!', '#ea580c', 'আহত পথচারী'],
+    ['রাস্তা তোর বাপের নাকি?!', '#dc2626', 'মেজাজ খারাপ'],
+    ['বেয়াদব কোথাকার!', '#991b1b', 'গালি দিচ্ছে'],
+    ['দেখে চালা হারামজাদা!', '#dc2626', 'বড় বিপদ!'],
+    ['ফুটপাত দিয়েও চালাবি নাকি?!', '#c2410c', 'পথচারী রাগান্বিত'],
+    ['পা ভেঙে দিলি রে শালা!', '#b91c1c', 'চিৎকার!'],
+    ['কই থিকা আইছে আবাল!', '#9f1239', 'ক্ষিপ্ত জনতা'],
+    ['চশমা পরে গাড়ি চালা!', '#d97706', 'সাবধান!'],
+  ];
+
+  const vehicleScoldLines: Array<[string, string, string]> = [
+    ['ওই শালা ব্রেক ধর!', '#dc2626', 'ড্রাইভার ক্ষিপ্ত'],
+    ['ওই খালি সাইড দে!', '#ea580c', 'জ্যাম অ্যালার্ট'],
+    ['গাড়ি কিনেছিস না চুরি?!', '#b91c1c', 'ধাক্কা!'],
+    ['লাইসেন্স কে দিছে তোরে?!', '#991b1b', 'ড্রাইভারের গালি'],
+    ['পেছন থেকে মারলি ক্যান?!', '#dc2626', 'সংঘর্ষ!'],
+    ['রাস্তা আটকায় ক্যান গাধা!', '#d97706', 'হর্ন বাজাচ্ছে'],
+    ['বেল বাজায়া মাথা খাইলো!', '#c2410c', 'বেল শকওয়েভ'],
+    ['ধাক্কা মারিস ক্যান ওস্তাদ?!', '#b91c1c', 'মেজাজ গরম'],
+  ];
+
+  const npcScoldBubbles = npcScoldLines.map(([line, accent, tag]) =>
+    buildScoldBubbleTex(line, accent, tag)
+  );
+  const vehicleScoldBubbles = vehicleScoldLines.map(([line, accent, tag]) =>
+    buildScoldBubbleTex(line, accent, tag)
+  );
+
+  // 36. U-TURN BAY ROAD MARKING DECAL (256x256 transparent)
+  const uMarkCanvas = document.createElement('canvas');
+  uMarkCanvas.width = 256;
+  uMarkCanvas.height = 256;
+  const umCtx = uMarkCanvas.getContext('2d')!;
+  umCtx.clearRect(0, 0, 256, 256);
+
+  // Yellow dashed U-turn turning zone border
+  umCtx.strokeStyle = '#facc15';
+  umCtx.lineWidth = 8;
+  umCtx.setLineDash([18, 12]);
+  umCtx.strokeRect(14, 14, 228, 228);
+  umCtx.setLineDash([]);
+
+  // Crisp White Painted Curved U-Turn Arrow
+  umCtx.strokeStyle = '#f8fafc';
+  umCtx.lineWidth = 22;
+  umCtx.lineCap = 'round';
+  umCtx.beginPath();
+  umCtx.moveTo(74, 206);
+  umCtx.lineTo(74, 98);
+  umCtx.arc(128, 98, 54, Math.PI, 0, false);
+  umCtx.lineTo(182, 186);
+  umCtx.stroke();
+
+  umCtx.fillStyle = '#f8fafc';
+  umCtx.beginPath();
+  umCtx.moveTo(182, 220);
+  umCtx.lineTo(148, 174);
+  umCtx.lineTo(216, 174);
+  umCtx.closePath();
+  umCtx.fill();
+
+  const uTurnRoadMark = finalizeColorTexture(uMarkCanvas, maxAnisotropy, 1, 1);
+  allTextures.push(uTurnRoadMark);
+
+  // 37. DMP BLUE "ইউ-টার্ন / U-TURN" SIGNBOARD TEXTURE (256x256)
+  const uSignCanvas = document.createElement('canvas');
+  uSignCanvas.width = 256;
+  uSignCanvas.height = 256;
+  const usCtx = uSignCanvas.getContext('2d')!;
+  usCtx.fillStyle = '#1d4ed8';
+  usCtx.fillRect(0, 0, 256, 256);
+  usCtx.strokeStyle = '#ffffff';
+  usCtx.lineWidth = 10;
+  usCtx.strokeRect(10, 10, 236, 236);
+
+  usCtx.strokeStyle = '#ffffff';
+  usCtx.lineWidth = 20;
+  usCtx.lineCap = 'round';
+  usCtx.beginPath();
+  usCtx.moveTo(78, 165);
+  usCtx.lineTo(78, 86);
+  usCtx.arc(128, 86, 50, Math.PI, 0, false);
+  usCtx.lineTo(178, 145);
+  usCtx.stroke();
+
+  usCtx.fillStyle = '#ffffff';
+  usCtx.beginPath();
+  usCtx.moveTo(178, 172);
+  usCtx.lineTo(152, 134);
+  usCtx.lineTo(204, 134);
+  usCtx.closePath();
+  usCtx.fill();
+
+  usCtx.fillStyle = '#fef08a';
+  usCtx.font = 'bold 30px "Hind Siliguri", sans-serif';
+  usCtx.textAlign = 'center';
+  usCtx.fillText('ইউ-টার্ন • U-TURN', 128, 224);
+
+  const uTurnSign = finalizeColorTexture(uSignCanvas, maxAnisotropy, 1, 1);
+  allTextures.push(uTurnSign);
+
+  // 38. DHAKA METRO RAIL MRT-6 PILLAR BADGE WRAP (512x256)
+  const mpCanvas = document.createElement('canvas');
+  mpCanvas.width = 512;
+  mpCanvas.height = 256;
+  const mpCtx = mpCanvas.getContext('2d')!;
+  mpCtx.fillStyle = '#064e3b';
+  mpCtx.fillRect(0, 0, 512, 256);
+  mpCtx.fillStyle = '#dc2626';
+  mpCtx.fillRect(0, 0, 512, 34);
+  mpCtx.fillRect(0, 222, 512, 34);
+  mpCtx.strokeStyle = '#facc15';
+  mpCtx.lineWidth = 6;
+  mpCtx.strokeRect(12, 42, 488, 172);
+
+  mpCtx.fillStyle = '#ffffff';
+  mpCtx.font = 'bold 38px "Hind Siliguri", sans-serif';
+  mpCtx.textAlign = 'center';
+  mpCtx.fillText('ঢাকা মেট্রো-রেল · MRT-6', 256, 110);
+  mpCtx.fillStyle = '#fef08a';
+  mpCtx.font = 'bold 26px "Hind Siliguri", sans-serif';
+  mpCtx.fillText('পিলার নং M-104 · ধীরগতিতে চলুন', 256, 168);
+
+  const metroPillarBadge = finalizeColorTexture(mpCanvas, maxAnisotropy, 1, 1);
+  allTextures.push(metroPillarBadge);
+
+  // 39. INTERACTIVE STREET VENDOR POWER-UP KIOSK SIGNS (Chai-Break & Jhal-Muri)
+  const buildKioskSign = (
+    bgTop: string,
+    bgBot: string,
+    border: string,
+    badgeBg: string,
+    badgeText: string,
+    title: string,
+    sub: string
+  ) => {
+    const kCanvas = document.createElement('canvas');
+    kCanvas.width = 512;
+    kCanvas.height = 192;
+    const kCtx = kCanvas.getContext('2d')!;
+    const grad = kCtx.createLinearGradient(0, 0, 0, 192);
+    grad.addColorStop(0, bgTop);
+    grad.addColorStop(1, bgBot);
+    kCtx.fillStyle = grad;
+    kCtx.fillRect(0, 0, 512, 192);
+
+    kCtx.strokeStyle = border;
+    kCtx.lineWidth = 8;
+    kCtx.strokeRect(8, 8, 496, 176);
+
+    kCtx.fillStyle = badgeBg;
+    kCtx.fillRect(24, 18, 464, 40);
+    kCtx.fillStyle = '#09090b';
+    kCtx.font = 'bold 23px "Hind Siliguri", "Noto Sans Bengali", sans-serif';
+    kCtx.textAlign = 'center';
+    kCtx.fillText(badgeText, 256, 46);
+
+    kCtx.fillStyle = '#ffffff';
+    kCtx.font = 'bold 42px "Hind Siliguri", "Noto Sans Bengali", sans-serif';
+    kCtx.fillText(title, 256, 108);
+
+    kCtx.fillStyle = '#fef08a';
+    kCtx.font = 'bold 24px "Hind Siliguri", "Noto Sans Bengali", sans-serif';
+    kCtx.fillText(sub, 256, 154);
+
+    const tex = finalizeColorTexture(kCanvas, maxAnisotropy, 1, 1);
+    allTextures.push(tex);
+    return tex;
+  };
+
+  const chaiBreakKioskSign = buildKioskSign(
+    '#064e3b',
+    '#022c22',
+    '#34d399',
+    '#34d399',
+    '⚡ পাওয়ার-আপ স্টেশন · ইনভিন্সিবল শিল্ড',
+    '☕ স্পেশাল চা-ব্রেক',
+    'পাশ দিয়ে গেলেই ৬ সেকেন্ড অজেয় শিল্ড!'
+  );
+
+  const jhalMuriKioskSign = buildKioskSign(
+    '#9a3412',
+    '#450a0a',
+    '#fb923c',
+    '#facc15',
+    '🔥 পাওয়ার-আপ স্টেশন · সুপার স্পিড বুস্ট',
+    '🌶️ মামার ঝালমুড়ি',
+    'পাশ দিয়ে গেলেই ৪.৫ সেকেন্ড রকেট গতি!'
+  );
+
   return {
     asphalt,
     asphaltBump,
@@ -2332,6 +2603,13 @@ export function createProceduralTextures(maxAnisotropy: number): ProceduralTextu
     openShopSigns,
     electionPosters,
     electionPosterRope,
+    npcScoldBubbles,
+    vehicleScoldBubbles,
+    uTurnRoadMark,
+    uTurnSign,
+    metroPillarBadge,
+    chaiBreakKioskSign,
+    jhalMuriKioskSign,
     disposeAll: () => {
       allTextures.forEach((t) => t.dispose());
     },

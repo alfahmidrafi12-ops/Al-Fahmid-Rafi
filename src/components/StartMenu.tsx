@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Play, Sun, Cloud } from 'lucide-react';
+import { Volume2, VolumeX, Play, Sun, Cloud, CloudRain, Sunset, Shuffle } from 'lucide-react';
 import { DRIVER_PROFILES, DriverId, WeatherType } from '../types/game';
 import { soundEngine } from '../audio/soundEngine';
 
@@ -7,7 +7,9 @@ interface StartMenuProps {
   selectedDriver: DriverId;
   onSelectDriver: (id: DriverId) => void;
   weather: WeatherType;
+  autoWeather: boolean;
   onSelectWeather: (weather: WeatherType) => void;
+  onToggleAutoWeather: () => void;
   highScore: number;
   isMuted: boolean;
   onToggleMute: () => void;
@@ -18,7 +20,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   selectedDriver,
   onSelectDriver,
   weather,
+  autoWeather,
   onSelectWeather,
+  onToggleAutoWeather,
   highScore,
   isMuted,
   onToggleMute,
@@ -29,7 +33,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   return (
     <div className="pointer-events-none fixed inset-0 z-20 flex flex-col justify-between p-4 sm:p-6">
       {/* Top Header */}
-      <div className="pointer-events-auto mx-auto flex w-full max-w-6xl items-start justify-between gap-6">
+      <div className="pointer-events-auto mx-auto flex w-full max-w-6xl flex-wrap items-start justify-between gap-4">
         <div className="rounded-xl border border-white/12 bg-zinc-950/90 px-5 py-4 shadow-xl">
           <h1 className="text-3xl font-bold tracking-tight text-amber-400 sm:text-5xl">
             ধান্দাবাজ ৩D
@@ -48,30 +52,67 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         </div>
 
         {/* Weather Atmosphere & Audio Controls */}
-        <div className="flex items-center gap-2 rounded-xl border border-white/12 bg-zinc-950/90 p-1.5 shadow-xl">
+        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-white/12 bg-zinc-950/90 p-1.5 shadow-xl">
+          <button
+            type="button"
+            onClick={onToggleAutoWeather}
+            title="খেলা চলাকালীন র‍্যান্ডম ঢাকা আবহাওয়া"
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+              autoWeather
+                ? 'bg-emerald-500 text-zinc-950'
+                : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+            }`}
+          >
+            <Shuffle className="h-3.5 w-3.5" />
+            <span>র‍্যান্ডম</span>
+          </button>
           <button
             type="button"
             onClick={() => onSelectWeather('SUNNY')}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-              weather === 'SUNNY'
+            className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+              !autoWeather && weather === 'SUNNY'
                 ? 'bg-amber-500 text-zinc-950'
                 : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
             }`}
           >
             <Sun className="h-3.5 w-3.5" />
-            <span>রোদ্রোজ্জ্বল</span>
+            <span>রোদ</span>
           </button>
           <button
             type="button"
             onClick={() => onSelectWeather('CLOUDY')}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-              weather === 'CLOUDY'
-                ? 'bg-amber-500 text-zinc-950'
+            className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+              !autoWeather && weather === 'CLOUDY'
+                ? 'bg-sky-400 text-zinc-950'
                 : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
             }`}
           >
             <Cloud className="h-3.5 w-3.5" />
             <span>মেঘলা</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelectWeather('RAINY')}
+            className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+              !autoWeather && weather === 'RAINY'
+                ? 'bg-indigo-400 text-zinc-950'
+                : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+            }`}
+          >
+            <CloudRain className="h-3.5 w-3.5" />
+            <span>বৃষ্টি</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelectWeather('GOLDEN')}
+            className={`flex items-center gap-1 rounded-lg px-2.5 py-2 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+              !autoWeather && weather === 'GOLDEN'
+                ? 'bg-orange-400 text-zinc-950'
+                : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+            }`}
+          >
+            <Sunset className="h-3.5 w-3.5" />
+            <span>বিকেল</span>
           </button>
 
           <div className="h-5 w-px bg-white/12" />
